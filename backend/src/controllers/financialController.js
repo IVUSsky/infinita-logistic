@@ -1,48 +1,96 @@
-const db = require('../database/db')
+const { db, nextId, now } = require('../database/db')
 
 exports.list = (req, res) => {
   const { type, status, year, month, page = 1, limit = 20 } = req.query
-  const conditions = []
-  const params = []
-  if (type)   { conditions.push('fr.type = ?');   params.push(type) }
-  if (status) { conditions.push('fr.status = ?'); params.push(status) }
-  if (year)   { conditions.push("strftime('%Y', fr.created_at) = ?"); params.push(year) }
-  if (month)  { conditions.push("strftime('%m', fr.created_at) = ?"); params.push(String(month).padStart(2,'0')) }
-  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''
-  const offset = (parseInt(page)-1) * parseInt(limit)
-  const total = db.prepare(`SELECT COUNT(*) as cnt FROM financial_records fr ${where}`).get(...params).cnt
-  const rows = db.prepare(`
-    SELECT fr.*, s.tracking_number, c.name AS courier_name,
-           u.first_name||' '||u.last_name AS created_name
-    FROM financial_records fr
-    LEFT JOIN shipments s ON fr.shipment_id = s.id
-    LEFT JOIN couriers c ON fr.courier_id = c.id
-    LEFT JOIN users u ON fr.created_by = u.id
-    ${where} ORDER BY fr.created_at DESC LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit), offset)
-  res.json({ data: rows, total, page: parseInt(page), limit: parseInt(limit) })
+
+  let records = db.get('financial_records').value()
+
+  if (type)   records = records.filter(r => r.type === type)
+  if (status) records = records.filter(r => r.status === status)
+  if (year && month) {
+    const mm = String(month).padStart(2, '0')
+    records = records.filter(r => r.created_at && r.created_at.startsWith(`${year}-${mm}`))
+  } else if (year) {
+    records = records.filter(r => r.created_at && r.created_at.startsWith(String(year)))
+  } else if (month) {
+    const mm = String(month).padStart(2, '0')
+    records = records.filter(r => r.created_at && r.created_at.slice(5, 7) === mm)
+  }
+
+  records = records.slice().sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+
+  const total = records.length
+  const pageNum = parseInt(page)
+  const limitNum = parseInt(limit)
+  const offset = (pageNum - 1) * limitNum
+  const paged = records.slice(offset, offset + limitNum)
+
+  const shipments = db.get('shipments').value()
+  const couriers = db.get('couriers').value()
+  const users = db.get('users').value()
+
+  const rows = paged.map(fr => {
+    const s = shipments.find(s => s.id === fr.shipment_id)
+    const c = couriers.find(c => c.id === fr.courier_id)
+    const u = users.find(u => u.id === fr.created_by)
+    return {
+      ...fr,
+      tracking_number: s ? s.tracking_number : null,
+      courier_name: c ? c.name : null,
+      created_name: u ? `${u.first_name} ${u.last_name}` : null
+    }
+  })
+
+  res.json({ data: rows, total, page: pageNum, limit: limitNum })
 }
 
 exports.create = (req, res) => {
   const { type, shipment_id, amount, currency, amount_bgn, description, category, courier_id, invoice_number, due_date, status } = req.body
   if (!type || !amount || !description) return res.status(400).json({ error: 'Типът, сумата и описанието са задължителни' })
-  const result = db.prepare(`
-    INSERT INTO financial_records (type,shipment_id,amount,currency,amount_bgn,description,category,courier_id,invoice_number,due_date,status,created_by)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-  `).run(type, shipment_id||null, amount, currency||'EUR', amount_bgn||null, description, category||null, courier_id||null, invoice_number||null, due_date||null, status||'pending', req.user.id)
-  res.status(201).json({ id: result.lastInsertRowid })
+  const id = nextId('financial_records')
+  db.get('financial_records').push({
+    id,
+    type,
+    shipment_id: shipment_id || null,
+    amount,
+    currency: currency || 'EUR',
+    amount_bgn: amount_bgn || null,
+    description,
+    category: category || null,
+    courier_id: courier_id || null,
+    invoice_number: invoice_number || null,
+    due_date: due_date || null,
+    paid_date: null,
+    status: status || 'pending',
+    created_by: req.user.id,
+    created_at: now()
+  }).write()
+  res.status(201).json({ id })
 }
 
 exports.update = (req, res) => {
+  const id = parseInt(req.params.id)
   const { type, amount, currency, amount_bgn, description, category, invoice_number, due_date, paid_date, status } = req.body
-  const r = db.prepare(`UPDATE financial_records SET type=?,amount=?,currency=?,amount_bgn=?,description=?,category=?,invoice_number=?,due_date=?,paid_date=?,status=? WHERE id=?`)
-    .run(type, amount, currency||'EUR', amount_bgn||null, description, category||null, invoice_number||null, due_date||null, paid_date||null, status, req.params.id)
-  if (!r.changes) return res.status(404).json({ error: 'Записът не е намерен' })
+  const record = db.get('financial_records').find({ id }).value()
+  if (!record) return res.status(404).json({ error: 'Записът не е намерен' })
+  db.get('financial_records').find({ id }).assign({
+    type,
+    amount,
+    currency: currency || 'EUR',
+    amount_bgn: amount_bgn || null,
+    description,
+    category: category || null,
+    invoice_number: invoice_number || null,
+    due_date: due_date || null,
+    paid_date: paid_date || null,
+    status
+  }).write()
   res.json({ message: 'Записът е обновен' })
 }
 
 exports.remove = (req, res) => {
-  db.prepare('DELETE FROM financial_records WHERE id = ?').run(req.params.id)
+  const id = parseInt(req.params.id)
+  db.get('financial_records').remove({ id }).write()
   res.json({ message: 'Записът е изтрит' })
 }
 
@@ -50,46 +98,78 @@ exports.dashboard = (req, res) => {
   const { year = new Date().getFullYear() } = req.query
   const y = String(year)
 
-  const monthlyTotals = db.prepare(`
-    SELECT strftime('%m', created_at) AS month,
-           SUM(CASE WHEN type IN ('invoice','expense') THEN amount ELSE 0 END) AS expenses,
-           SUM(CASE WHEN type = 'payment' THEN amount ELSE 0 END) AS income
-    FROM financial_records
-    WHERE strftime('%Y', created_at) = ?
-    GROUP BY month ORDER BY month
-  `).all(y)
+  const allRecords = db.get('financial_records').value()
+  const yearRecords = allRecords.filter(r => r.created_at && r.created_at.startsWith(y))
 
-  const byCourier = db.prepare(`
-    SELECT c.name, SUM(fr.amount) AS total, COUNT(*) AS count
-    FROM financial_records fr JOIN couriers c ON fr.courier_id = c.id
-    WHERE strftime('%Y', fr.created_at) = ? AND fr.type = 'invoice'
-    GROUP BY c.id ORDER BY total DESC
-  `).all(y)
+  // Monthly totals
+  const monthlyMap = {}
+  yearRecords.forEach(r => {
+    const month = r.created_at ? r.created_at.slice(5, 7) : '01'
+    if (!monthlyMap[month]) monthlyMap[month] = { month, expenses: 0, income: 0 }
+    if (r.type === 'invoice' || r.type === 'expense') monthlyMap[month].expenses += r.amount || 0
+    if (r.type === 'payment') monthlyMap[month].income += r.amount || 0
+  })
+  const monthlyTotals = Object.values(monthlyMap).sort((a, b) => a.month.localeCompare(b.month))
 
-  const byCategory = db.prepare(`
-    SELECT COALESCE(category,'Без категория') AS category, SUM(amount) AS total, COUNT(*) AS count
-    FROM financial_records
-    WHERE strftime('%Y', created_at) = ?
-    GROUP BY category ORDER BY total DESC
-  `).all(y)
+  // By courier
+  const couriers = db.get('couriers').value()
+  const byCourierMap = {}
+  yearRecords.filter(r => r.type === 'invoice' && r.courier_id).forEach(r => {
+    const key = r.courier_id
+    if (!byCourierMap[key]) {
+      const c = couriers.find(c => c.id === key)
+      byCourierMap[key] = { name: c ? c.name : null, total: 0, count: 0 }
+    }
+    byCourierMap[key].total += r.amount || 0
+    byCourierMap[key].count += 1
+  })
+  const byCourier = Object.values(byCourierMap).sort((a, b) => b.total - a.total)
 
-  const summary = db.prepare(`
-    SELECT
-      SUM(CASE WHEN type='invoice' AND status!='cancelled' THEN amount ELSE 0 END) AS total_invoiced,
-      SUM(CASE WHEN type='invoice' AND status='paid' THEN amount ELSE 0 END) AS total_paid,
-      SUM(CASE WHEN type='invoice' AND status='pending' THEN amount ELSE 0 END) AS total_pending,
-      SUM(CASE WHEN type='invoice' AND status='overdue' THEN amount ELSE 0 END) AS total_overdue,
-      COUNT(CASE WHEN type='invoice' AND status='pending' THEN 1 END) AS pending_count,
-      COUNT(CASE WHEN type='invoice' AND status='overdue' THEN 1 END) AS overdue_count
-    FROM financial_records WHERE strftime('%Y', created_at) = ?
-  `).get(y)
+  // By category
+  const byCategoryMap = {}
+  yearRecords.forEach(r => {
+    const cat = r.category || 'Без категория'
+    if (!byCategoryMap[cat]) byCategoryMap[cat] = { category: cat, total: 0, count: 0 }
+    byCategoryMap[cat].total += r.amount || 0
+    byCategoryMap[cat].count += 1
+  })
+  const byCategory = Object.values(byCategoryMap).sort((a, b) => b.total - a.total)
 
-  const recentShipmentCosts = db.prepare(`
-    SELECT s.tracking_number, s.dest_country, s.origin_country, c.name AS courier,
-           s.freight_cost, s.total_cost, s.currency, s.created_at
-    FROM shipments s LEFT JOIN couriers c ON s.courier_id = c.id
-    WHERE s.freight_cost IS NOT NULL ORDER BY s.created_at DESC LIMIT 8
-  `).all()
+  // Summary
+  const summary = {
+    total_invoiced: 0,
+    total_paid: 0,
+    total_pending: 0,
+    total_overdue: 0,
+    pending_count: 0,
+    overdue_count: 0
+  }
+  yearRecords.forEach(r => {
+    if (r.type === 'invoice' && r.status !== 'cancelled') summary.total_invoiced += r.amount || 0
+    if (r.type === 'invoice' && r.status === 'paid') summary.total_paid += r.amount || 0
+    if (r.type === 'invoice' && r.status === 'pending') { summary.total_pending += r.amount || 0; summary.pending_count++ }
+    if (r.type === 'invoice' && r.status === 'overdue') { summary.total_overdue += r.amount || 0; summary.overdue_count++ }
+  })
+
+  // Recent shipment costs
+  const shipments = db.get('shipments').value()
+  const recentShipmentCosts = shipments
+    .filter(s => s.freight_cost != null)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, 8)
+    .map(s => {
+      const c = couriers.find(c => c.id === s.courier_id)
+      return {
+        tracking_number: s.tracking_number,
+        dest_country: s.dest_country,
+        origin_country: s.origin_country,
+        courier: c ? c.name : null,
+        freight_cost: s.freight_cost,
+        total_cost: s.total_cost,
+        currency: s.currency,
+        created_at: s.created_at
+      }
+    })
 
   res.json({ monthlyTotals, byCourier, byCategory, summary, recentShipmentCosts })
 }

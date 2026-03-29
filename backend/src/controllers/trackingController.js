@@ -1,60 +1,103 @@
-const db = require('../database/db')
+const { db, nextId, now } = require('../database/db')
 
 exports.getByTracking = (req, res) => {
   const { number } = req.params
-  const shipment = db.prepare(`
-    SELECT s.id, s.tracking_number, s.status, s.direction,
-           s.origin_country, s.origin_city, s.dest_country, s.dest_city,
-           s.sender_name, s.recipient_name, s.description, s.weight_kg,
-           s.transport_type, s.estimated_delivery, s.actual_delivery,
-           c.name AS courier_name
-    FROM shipments s LEFT JOIN couriers c ON s.courier_id = c.id
-    WHERE s.tracking_number = ?
-  `).get(number)
+  const shipment = db.get('shipments').find({ tracking_number: number }).value()
   if (!shipment) return res.status(404).json({ error: 'Пратката не е намерена' })
 
-  const events = db.prepare(`
-    SELECT te.*, u.first_name||' '||u.last_name AS user_name
-    FROM tracking_events te LEFT JOIN users u ON te.created_by = u.id
-    WHERE te.shipment_id = ? ORDER BY te.timestamp ASC
-  `).all(shipment.id)
+  const couriers = db.get('couriers').value()
+  const courier = couriers.find(c => c.id === shipment.courier_id)
+  const users = db.get('users').value()
 
-  res.json({ ...shipment, events })
+  const events = db.get('tracking_events').filter(e => e.shipment_id === shipment.id).value()
+    .map(e => {
+      const u = users.find(u => u.id === e.created_by)
+      return { ...e, user_name: u ? `${u.first_name} ${u.last_name}` : null }
+    })
+    .sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''))
+
+  const result = {
+    id: shipment.id,
+    tracking_number: shipment.tracking_number,
+    status: shipment.status,
+    direction: shipment.direction,
+    origin_country: shipment.origin_country,
+    origin_city: shipment.origin_city,
+    dest_country: shipment.dest_country,
+    dest_city: shipment.dest_city,
+    sender_name: shipment.sender_name,
+    recipient_name: shipment.recipient_name,
+    description: shipment.description,
+    weight_kg: shipment.weight_kg,
+    transport_type: shipment.transport_type,
+    estimated_delivery: shipment.estimated_delivery,
+    actual_delivery: shipment.actual_delivery,
+    courier_name: courier ? courier.name : null
+  }
+
+  res.json({ ...result, events })
 }
 
 exports.addEvent = (req, res) => {
   const { shipment_id, status, location, description, timestamp } = req.body
   if (!shipment_id || !description) return res.status(400).json({ error: 'Пратката и описанието са задължителни' })
-  const result = db.prepare(`INSERT INTO tracking_events (shipment_id, status, location, description, timestamp, created_by) VALUES (?,?,?,?,?,?)`)
-    .run(shipment_id, status||null, location||null, description, timestamp||new Date().toISOString(), req.user.id)
+
+  const id = nextId('tracking_events')
+  db.get('tracking_events').push({
+    id,
+    shipment_id,
+    status: status || null,
+    location: location || null,
+    description,
+    timestamp: timestamp || new Date().toISOString(),
+    created_by: req.user.id
+  }).write()
 
   if (status) {
-    db.prepare("UPDATE shipments SET status=?, updated_at=datetime('now') WHERE id=?").run(status, shipment_id)
+    db.get('shipments').find({ id: shipment_id }).assign({ status, updated_at: now() }).write()
   }
-  res.status(201).json({ id: result.lastInsertRowid })
+  res.status(201).json({ id })
 }
 
 exports.updateEvent = (req, res) => {
+  const id = parseInt(req.params.id)
   const { status, location, description, timestamp } = req.body
-  db.prepare('UPDATE tracking_events SET status=?,location=?,description=?,timestamp=? WHERE id=?')
-    .run(status||null, location||null, description, timestamp, req.params.id)
+  db.get('tracking_events').find({ id }).assign({
+    status: status || null,
+    location: location || null,
+    description,
+    timestamp
+  }).write()
   res.json({ message: 'Събитието е обновено' })
 }
 
 exports.deleteEvent = (req, res) => {
-  db.prepare('DELETE FROM tracking_events WHERE id = ?').run(req.params.id)
+  const id = parseInt(req.params.id)
+  db.get('tracking_events').remove({ id }).write()
   res.json({ message: 'Събитието е изтрито' })
 }
 
 exports.listAll = (req, res) => {
   const { status, limit = 10 } = req.query
-  let query = `
-    SELECT te.*, s.tracking_number, s.sender_name, s.recipient_name
-    FROM tracking_events te JOIN shipments s ON te.shipment_id = s.id
-  `
-  const params = []
-  if (status) { query += ' WHERE te.status = ?'; params.push(status) }
-  query += ' ORDER BY te.timestamp DESC LIMIT ?'
-  params.push(parseInt(limit))
-  res.json(db.prepare(query).all(...params))
+  const shipments = db.get('shipments').value()
+
+  let events = db.get('tracking_events').value()
+  if (status) {
+    events = events.filter(e => e.status === status)
+  }
+
+  const result = events
+    .map(e => {
+      const s = shipments.find(s => s.id === e.shipment_id)
+      return {
+        ...e,
+        tracking_number: s ? s.tracking_number : null,
+        sender_name: s ? s.sender_name : null,
+        recipient_name: s ? s.recipient_name : null
+      }
+    })
+    .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+    .slice(0, parseInt(limit))
+
+  res.json(result)
 }

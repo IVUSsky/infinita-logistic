@@ -16,10 +16,11 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 
-# Database (SQLite – managed by Railway Volume)
+# Database files (managed by Railway Volume)
 backend/database/*.db
 backend/database/*.db-shm
 backend/database/*.db-wal
+backend/database/*.json
 
 # Logs
 *.log

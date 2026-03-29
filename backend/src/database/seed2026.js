@@ -1,541 +1,466 @@
 require('dotenv').config()
-const db = require('./db')
+const { db, nextId, now } = require('./db')
 
-console.log('🌱 Зареждане на данни за Януари–Март 2026...\n')
+console.log('Зареждане на данни за Януари–Март 2026...\n')
 
 // ─── Изчисти стари данни ────────────────────────────────────────────────────
-db.exec(`
-  DELETE FROM financial_records;
-  DELETE FROM tracking_events;
-  DELETE FROM shipments;
-`)
-console.log('🗑  Изчистени стари пратки\n')
+db.set('financial_records', []).write()
+db.set('tracking_events', []).write()
+db.set('shipments', []).write()
+console.log('Изчистени стари пратки\n')
 
 // ─── Пратки ─────────────────────────────────────────────────────────────────
-const insertShipment = db.prepare(`
-  INSERT INTO shipments (
-    tracking_number, status, direction,
-    origin_country, origin_city, dest_country, dest_city,
-    sender_name, sender_address,
-    recipient_name, recipient_address,
-    courier_id, transport_type,
-    weight_kg, length_cm, width_cm, height_cm, packages_count,
-    hs_code, description, declared_value, currency,
-    freight_cost, insurance_cost, customs_duty, total_cost,
-    invoice_number, po_number, notes,
-    assigned_to, created_by,
-    created_at, updated_at, estimated_delivery, actual_delivery
-  ) VALUES (
-    ?, ?, ?,
-    ?, ?, ?, ?,
-    ?, ?,
-    ?, ?,
-    ?, ?,
-    ?, ?, ?, ?, ?,
-    ?, ?, ?, ?,
-    ?, ?, ?, ?,
-    ?, ?, ?,
-    ?, ?,
-    ?, ?, ?, ?
-  )
-`)
-
-const shipments = [
+const shipmentsData = [
   // ─── ЯНУАРИ 2026 ────────────────────────────────────────────────────────
-
-  // 1. Siemens ACUSON P500 - въздух DE→BG - доставена
-  [
-    'INF-2026-001', 'delivered', 'import',
-    'DE', 'Erlangen', 'BG', 'София',
-    'Siemens Healthineers AG', 'Henkestraße 127, 91052 Erlangen, Germany',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    1, 'air',
-    68.5, 95, 60, 55, 3,
-    '9018.12', 'Ултразвукова система Siemens ACUSON P500 с 3 сонди', 38500, 'EUR',
-    355, 385, 0, 740,
-    'INV-2026-001', 'PO-2025-112', 'Поръчка за УМБАЛ "Александровска"',
-    3, 2,
-    '2026-01-05 09:00:00', '2026-01-13 14:30:00', '2026-01-14', '2026-01-13'
-  ],
-
-  // 2. Mindray BS-240 Pro - море CN→BG - в транзит
-  [
-    'INF-2026-002', 'in_transit', 'import',
-    'CN', 'Shenzhen', 'BG', 'София',
-    'Mindray Medical International Co., Ltd.', 'Mindray Building, Keji 12th Road South, Shenzhen 518057',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    1, 'sea',
-    425, 180, 120, 95, 6,
-    '9027.80', 'Биохимични анализатори Mindray BS-240 Pro x3 + реагенти', 54000, 'EUR',
-    638, 540, 0, 1178,
-    'INV-2026-002', 'PO-2025-118', 'За СМДЛ "Синево" - Варна и Пловдив',
-    4, 2,
-    '2026-01-07 10:00:00', '2026-01-07 10:00:00', '2026-02-12', null
-  ],
-
-  // 3. Cardiolife TEC-8321 - наземен BG→GR - доставена
-  [
-    'INF-2026-003', 'delivered', 'export',
-    'BG', 'София', 'GR', 'Атина',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    'Iatrika Hellas S.A.', 'Leoforos Kifissias 280, Halandri 15232, Athens',
-    3, 'road',
-    18.4, 55, 40, 30, 2,
-    '9021.50', 'Кардиостимулатори Nihon Kohden Cardiolife TEC-8321 x2', 22400, 'EUR',
-    48, 224, 0, 272,
-    'INV-2026-003', 'PO-2025-121', 'Съгласно рамков договор GR-2025-04',
-    3, 2,
-    '2026-01-08 08:30:00', '2026-01-12 16:00:00', '2026-01-13', '2026-01-12'
-  ],
-
-  // 4. Fresenius 5008S - наземен AT→BG - доставена
-  [
-    'INF-2026-004', 'delivered', 'import',
-    'AT', 'Вена', 'BG', 'Пловдив',
-    'Fresenius Medical Care Austria GmbH', 'Hafenstraße 9, 4020 Linz, Austria',
-    'УМБАЛ "Пълмед" ООД', 'ул. Братя Бъкстон 25, 4004 Пловдив',
-    2, 'road',
-    298, 200, 140, 115, 4,
-    '9018.90', 'Диализни апарати Fresenius 5008S x4 с консумативи', 76000, 'EUR',
-    982, 760, 0, 1742,
-    'INV-2026-004', 'PO-2025-098', 'Финална доставка по договор УМБАЛ Пълмед 2025',
-    4, 2,
-    '2026-01-10 07:00:00', '2026-01-14 18:00:00', '2026-01-15', '2026-01-14'
-  ],
-
-  // 5. Dräger Perseus A500 - наземен DE→BG - митница
-  [
-    'INF-2026-005', 'customs', 'import',
-    'DE', 'Любек', 'BG', 'София',
-    'Drägerwerk AG & Co. KGaA', 'Moislinger Allee 53–55, 23558 Lübeck, Germany',
-    'УМБАЛ "Свети Георги" ЕАД', 'бул. Пещерско шосе 66, 4002 Пловдив',
-    2, 'road',
-    312, 210, 130, 160, 3,
-    '9020.00', 'Анестезиологична система Dräger Perseus A500 + монитор Infinity Delta', 89500, 'EUR',
-    966, 895, 0, 1861,
-    'INV-2026-005', 'PO-2025-134', 'Изисква разрешение от ИАЛ',
-    3, 2,
-    '2026-01-13 06:00:00', '2026-01-20 11:00:00', '2026-01-21', null
-  ],
-
-  // 6. Ортопедични протези - наземен BG→GR - доставена
-  [
-    'INF-2026-006', 'delivered', 'export',
-    'BG', 'Варна', 'GR', 'Солун',
-    'Инфинита ООД', 'пл. Славейков 1, 9000 Варна',
-    'Medical Hellas S.A.', 'Egnatia 154, Thessaloniki 54636',
-    4, 'road',
-    24.6, 80, 60, 45, 2,
-    '9021.31', 'Тазобедрени протези Stryker Accolade II x5 + инструментариум', 18750, 'EUR',
-    57, 188, 0, 245,
-    'INV-2026-006', 'PO-2025-127', null,
-    4, 2,
-    '2026-01-15 08:00:00', '2026-01-18 15:00:00', '2026-01-19', '2026-01-18'
-  ],
-
-  // 7. GE Optima XR646 - въздух US→BG - доставена
-  [
-    'INF-2026-007', 'delivered', 'import',
-    'US', 'Милуоки', 'BG', 'София',
-    'GE HealthCare Technologies Inc.', '9900 W Innovation Drive, Wauwatosa, WI 53226',
-    'УМБАЛ "Царица Йоанна – ИСУЛ" ЕАД', 'ул. Бяло море 8, 1527 София',
-    1, 'air',
-    548, 220, 140, 135, 7,
-    '9022.12', 'Дигитален рентгенов апарат GE Optima XR646 с детектор DR', 94500, 'EUR',
-    2838, 945, 0, 3783,
-    'INV-2026-007', 'PO-2025-141', 'Монтаж от сертифициран GE техник',
-    3, 2,
-    '2026-01-18 14:00:00', '2026-01-28 10:00:00', '2026-01-29', '2026-01-28'
-  ],
-
+  {
+    tracking_number: 'INF-2026-001', status: 'delivered', direction: 'import',
+    origin_country: 'DE', origin_city: 'Erlangen', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'Siemens Healthineers AG', sender_address: 'Henkestraße 127, 91052 Erlangen, Germany',
+    recipient_name: 'Инфинита ООД', recipient_address: 'бул. Черни връх 51Б, 1407 София',
+    courier_id: 1, transport_type: 'air',
+    weight_kg: 68.5, length_cm: 95, width_cm: 60, height_cm: 55, packages_count: 3,
+    hs_code: '9018.12', description: 'Ултразвукова система Siemens ACUSON P500 с 3 сонди', declared_value: 38500, currency: 'EUR',
+    freight_cost: 355, insurance_cost: 385, customs_duty: 0, total_cost: 740,
+    invoice_number: 'INV-2026-001', po_number: 'PO-2025-112', notes: 'Поръчка за УМБАЛ "Александровска"',
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-01-05 09:00:00', updated_at: '2026-01-13 14:30:00', estimated_delivery: '2026-01-14', actual_delivery: '2026-01-13'
+  },
+  {
+    tracking_number: 'INF-2026-002', status: 'in_transit', direction: 'import',
+    origin_country: 'CN', origin_city: 'Shenzhen', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'Mindray Medical International Co., Ltd.', sender_address: 'Mindray Building, Keji 12th Road South, Shenzhen 518057',
+    recipient_name: 'Инфинита ООД', recipient_address: 'бул. Черни връх 51Б, 1407 София',
+    courier_id: 1, transport_type: 'sea',
+    weight_kg: 425, length_cm: 180, width_cm: 120, height_cm: 95, packages_count: 6,
+    hs_code: '9027.80', description: 'Биохимични анализатори Mindray BS-240 Pro x3 + реагенти', declared_value: 54000, currency: 'EUR',
+    freight_cost: 638, insurance_cost: 540, customs_duty: 0, total_cost: 1178,
+    invoice_number: 'INV-2026-002', po_number: 'PO-2025-118', notes: 'За СМДЛ "Синево" - Варна и Пловдив',
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-01-07 10:00:00', updated_at: '2026-01-07 10:00:00', estimated_delivery: '2026-02-12', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-003', status: 'delivered', direction: 'export',
+    origin_country: 'BG', origin_city: 'София', dest_country: 'GR', dest_city: 'Атина',
+    sender_name: 'Инфинита ООД', sender_address: 'бул. Черни връх 51Б, 1407 София',
+    recipient_name: 'Iatrika Hellas S.A.', recipient_address: 'Leoforos Kifissias 280, Halandri 15232, Athens',
+    courier_id: 3, transport_type: 'road',
+    weight_kg: 18.4, length_cm: 55, width_cm: 40, height_cm: 30, packages_count: 2,
+    hs_code: '9021.50', description: 'Кардиостимулатори Nihon Kohden Cardiolife TEC-8321 x2', declared_value: 22400, currency: 'EUR',
+    freight_cost: 48, insurance_cost: 224, customs_duty: 0, total_cost: 272,
+    invoice_number: 'INV-2026-003', po_number: 'PO-2025-121', notes: 'Съгласно рамков договор GR-2025-04',
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-01-08 08:30:00', updated_at: '2026-01-12 16:00:00', estimated_delivery: '2026-01-13', actual_delivery: '2026-01-12'
+  },
+  {
+    tracking_number: 'INF-2026-004', status: 'delivered', direction: 'import',
+    origin_country: 'AT', origin_city: 'Вена', dest_country: 'BG', dest_city: 'Пловдив',
+    sender_name: 'Fresenius Medical Care Austria GmbH', sender_address: 'Hafenstraße 9, 4020 Linz, Austria',
+    recipient_name: 'УМБАЛ "Пълмед" ООД', recipient_address: 'ул. Братя Бъкстон 25, 4004 Пловдив',
+    courier_id: 2, transport_type: 'road',
+    weight_kg: 298, length_cm: 200, width_cm: 140, height_cm: 115, packages_count: 4,
+    hs_code: '9018.90', description: 'Диализни апарати Fresenius 5008S x4 с консумативи', declared_value: 76000, currency: 'EUR',
+    freight_cost: 982, insurance_cost: 760, customs_duty: 0, total_cost: 1742,
+    invoice_number: 'INV-2026-004', po_number: 'PO-2025-098', notes: 'Финална доставка по договор УМБАЛ Пълмед 2025',
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-01-10 07:00:00', updated_at: '2026-01-14 18:00:00', estimated_delivery: '2026-01-15', actual_delivery: '2026-01-14'
+  },
+  {
+    tracking_number: 'INF-2026-005', status: 'customs', direction: 'import',
+    origin_country: 'DE', origin_city: 'Любек', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'Drägerwerk AG & Co. KGaA', sender_address: 'Moislinger Allee 53–55, 23558 Lübeck, Germany',
+    recipient_name: 'УМБАЛ "Свети Георги" ЕАД', recipient_address: 'бул. Пещерско шосе 66, 4002 Пловдив',
+    courier_id: 2, transport_type: 'road',
+    weight_kg: 312, length_cm: 210, width_cm: 130, height_cm: 160, packages_count: 3,
+    hs_code: '9020.00', description: 'Анестезиологична система Dräger Perseus A500 + монитор Infinity Delta', declared_value: 89500, currency: 'EUR',
+    freight_cost: 966, insurance_cost: 895, customs_duty: 0, total_cost: 1861,
+    invoice_number: 'INV-2026-005', po_number: 'PO-2025-134', notes: 'Изисква разрешение от ИАЛ',
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-01-13 06:00:00', updated_at: '2026-01-20 11:00:00', estimated_delivery: '2026-01-21', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-006', status: 'delivered', direction: 'export',
+    origin_country: 'BG', origin_city: 'Варна', dest_country: 'GR', dest_city: 'Солун',
+    sender_name: 'Инфинита ООД', sender_address: 'пл. Славейков 1, 9000 Варна',
+    recipient_name: 'Medical Hellas S.A.', recipient_address: 'Egnatia 154, Thessaloniki 54636',
+    courier_id: 4, transport_type: 'road',
+    weight_kg: 24.6, length_cm: 80, width_cm: 60, height_cm: 45, packages_count: 2,
+    hs_code: '9021.31', description: 'Тазобедрени протези Stryker Accolade II x5 + инструментариум', declared_value: 18750, currency: 'EUR',
+    freight_cost: 57, insurance_cost: 188, customs_duty: 0, total_cost: 245,
+    invoice_number: 'INV-2026-006', po_number: 'PO-2025-127', notes: null,
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-01-15 08:00:00', updated_at: '2026-01-18 15:00:00', estimated_delivery: '2026-01-19', actual_delivery: '2026-01-18'
+  },
+  {
+    tracking_number: 'INF-2026-007', status: 'delivered', direction: 'import',
+    origin_country: 'US', origin_city: 'Милуоки', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'GE HealthCare Technologies Inc.', sender_address: '9900 W Innovation Drive, Wauwatosa, WI 53226',
+    recipient_name: 'УМБАЛ "Царица Йоанна – ИСУЛ" ЕАД', recipient_address: 'ул. Бяло море 8, 1527 София',
+    courier_id: 1, transport_type: 'air',
+    weight_kg: 548, length_cm: 220, width_cm: 140, height_cm: 135, packages_count: 7,
+    hs_code: '9022.12', description: 'Дигитален рентгенов апарат GE Optima XR646 с детектор DR', declared_value: 94500, currency: 'EUR',
+    freight_cost: 2838, insurance_cost: 945, customs_duty: 0, total_cost: 3783,
+    invoice_number: 'INV-2026-007', po_number: 'PO-2025-141', notes: 'Монтаж от сертифициран GE техник',
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-01-18 14:00:00', updated_at: '2026-01-28 10:00:00', estimated_delivery: '2026-01-29', actual_delivery: '2026-01-28'
+  },
   // ─── ФЕВРУАРИ 2026 ──────────────────────────────────────────────────────
-
-  // 8. Philips EPIQ Elite - въздух NL→BG - доставена
-  [
-    'INF-2026-008', 'delivered', 'import',
-    'NL', 'Айндховен', 'BG', 'София',
-    'Philips Healthcare B.V.', 'Veenpluis 6, 5684 PC Best, Netherlands',
-    'МЦ "Токуда Болница" АД', 'бул. Никола Вапцаров 51Б, 1407 София',
-    1, 'air',
-    82, 105, 70, 65, 2,
-    '9018.12', 'Ехографска система Philips EPIQ Elite с кардио пакет', 62000, 'EUR',
-    492, 620, 0, 1112,
-    'INV-2026-008', 'PO-2026-003', 'Спешна поръчка за кардиологично отделение',
-    3, 2,
-    '2026-02-02 08:00:00', '2026-02-07 12:00:00', '2026-02-08', '2026-02-07'
-  ],
-
-  // 9. ЕКГ апарати - наземен DE→BG - доставена
-  [
-    'INF-2026-009', 'delivered', 'import',
-    'DE', 'Нюрнберг', 'BG', 'Варна',
-    'Schiller AG Germany GmbH', 'Altdorfer Str. 41, 90571 Schwaig bei Nürnberg',
-    'МБАЛ "Света Анна – Варна" АД', 'ул. Охридско езеро 3, 9010 Варна',
-    2, 'road',
-    45, 75, 55, 40, 5,
-    '9018.11', 'ЕКГ апарати Schiller CARDIOVIT AT-10 Plus x5 + Holter системи', 14200, 'EUR',
-    140, 142, 0, 282,
-    'INV-2026-009', 'PO-2026-005', null,
-    4, 2,
-    '2026-02-03 07:30:00', '2026-02-07 17:00:00', '2026-02-08', '2026-02-07'
-  ],
-
-  // 10. Хирургични инструменти - наземен BG→GR - доставена
-  [
-    'INF-2026-010', 'delivered', 'export',
-    'BG', 'София', 'GR', 'Патра',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    'Panagiotis Medical Supplies', 'Agiou Andreou 86, Patras 26222',
-    3, 'road',
-    12.8, 60, 40, 35, 3,
-    '9018.90', 'Лапароскопски инструментариум Karl Storz - комплект', 9800, 'EUR',
-    32, 98, 0, 130,
-    'INV-2026-010', 'PO-2026-007', null,
-    3, 2,
-    '2026-02-05 09:00:00', '2026-02-09 14:30:00', '2026-02-10', '2026-02-09'
-  ],
-
-  // 11. Philips HeartStart - наземен NL→BG - потвърдена
-  [
-    'INF-2026-011', 'confirmed', 'import',
-    'NL', 'Айндховен', 'BG', 'София',
-    'Philips Healthcare B.V.', 'Veenpluis 6, 5684 PC Best, Netherlands',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    2, 'road',
-    58, 80, 60, 50, 4,
-    '9018.19', 'Дефибрилатори Philips HeartStart MRx x4 + AED FRx x6', 31500, 'EUR',
-    310, 315, 0, 625,
-    'INV-2026-011', 'PO-2026-009', 'За спешни центрове - Министерство на здравеопазването',
-    4, 2,
-    '2026-02-10 10:00:00', '2026-02-10 10:00:00', '2026-02-18', null
-  ],
-
-  // 12. Canon Aquilion Prime - въздух JP→BG - в транзит
-  [
-    'INF-2026-012', 'in_transit', 'import',
-    'JP', 'Токио', 'BG', 'София',
-    'Canon Medical Systems Corporation', '1385 Shimoishigami, Otawara-shi, Tochigi 324-8550',
-    'УМБАЛ "Александровска" ЕАД', 'ул. Свети Георги Софийски 1, 1431 София',
-    1, 'air',
-    1240, 280, 180, 165, 12,
-    '9022.11', 'CT скенер Canon Aquilion Prime SP 160-срезов с работна станция', 485000, 'EUR',
-    7275, 4850, 0, 12125,
-    'INV-2026-012', 'PO-2025-089', 'Проект ОП "Региони в растеж" - УМБАЛ Александровска',
-    3, 2,
-    '2026-02-12 06:00:00', '2026-02-25 08:00:00', '2026-02-26', null
-  ],
-
-  // 13. Апарати за физиотерапия - наземен BG→RO - доставена
-  [
-    'INF-2026-013', 'delivered', 'export',
-    'BG', 'София', 'RO', 'Букурещ',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    'MedLife S.A.', 'Calea Grivitei 365, Sector 1, Bucharest 010719',
-    2, 'road',
-    88, 120, 80, 70, 6,
-    '9019.10', 'Физиотерапевтично оборудване BTL-5000 - комплект x3', 16800, 'EUR',
-    195, 168, 0, 363,
-    'INV-2026-013', 'PO-2026-002', 'Нов клиент - пробна доставка',
-    4, 2,
-    '2026-02-14 08:00:00', '2026-02-18 16:30:00', '2026-02-19', '2026-02-18'
-  ],
-
-  // 14. Dräger Atlan A350 - наземен DE→BG - в транзит
-  [
-    'INF-2026-014', 'in_transit', 'import',
-    'DE', 'Любек', 'BG', 'Стара Загора',
-    'Drägerwerk AG & Co. KGaA', 'Moislinger Allee 53–55, 23558 Lübeck, Germany',
-    'УМБАЛ "Проф. д-р Стоян Киркович" ЕАД', 'ул. Армейска 11, 6000 Стара Загора',
-    2, 'road',
-    195, 160, 120, 145, 2,
-    '9020.00', 'Анестезиологична система Dräger Atlan A350 XL + газов модул', 52000, 'EUR',
-    637, 520, 0, 1157,
-    'INV-2026-014', 'PO-2026-011', null,
-    3, 2,
-    '2026-02-19 07:00:00', '2026-02-24 09:00:00', '2026-02-25', null
-  ],
-
+  {
+    tracking_number: 'INF-2026-008', status: 'delivered', direction: 'import',
+    origin_country: 'NL', origin_city: 'Айндховен', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'Philips Healthcare B.V.', sender_address: 'Veenpluis 6, 5684 PC Best, Netherlands',
+    recipient_name: 'МЦ "Токуда Болница" АД', recipient_address: 'бул. Никола Вапцаров 51Б, 1407 София',
+    courier_id: 1, transport_type: 'air',
+    weight_kg: 82, length_cm: 105, width_cm: 70, height_cm: 65, packages_count: 2,
+    hs_code: '9018.12', description: 'Ехографска система Philips EPIQ Elite с кардио пакет', declared_value: 62000, currency: 'EUR',
+    freight_cost: 492, insurance_cost: 620, customs_duty: 0, total_cost: 1112,
+    invoice_number: 'INV-2026-008', po_number: 'PO-2026-003', notes: 'Спешна поръчка за кардиологично отделение',
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-02-02 08:00:00', updated_at: '2026-02-07 12:00:00', estimated_delivery: '2026-02-08', actual_delivery: '2026-02-07'
+  },
+  {
+    tracking_number: 'INF-2026-009', status: 'delivered', direction: 'import',
+    origin_country: 'DE', origin_city: 'Нюрнберг', dest_country: 'BG', dest_city: 'Варна',
+    sender_name: 'Schiller AG Germany GmbH', sender_address: 'Altdorfer Str. 41, 90571 Schwaig bei Nürnberg',
+    recipient_name: 'МБАЛ "Света Анна – Варна" АД', recipient_address: 'ул. Охридско езеро 3, 9010 Варна',
+    courier_id: 2, transport_type: 'road',
+    weight_kg: 45, length_cm: 75, width_cm: 55, height_cm: 40, packages_count: 5,
+    hs_code: '9018.11', description: 'ЕКГ апарати Schiller CARDIOVIT AT-10 Plus x5 + Holter системи', declared_value: 14200, currency: 'EUR',
+    freight_cost: 140, insurance_cost: 142, customs_duty: 0, total_cost: 282,
+    invoice_number: 'INV-2026-009', po_number: 'PO-2026-005', notes: null,
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-02-03 07:30:00', updated_at: '2026-02-07 17:00:00', estimated_delivery: '2026-02-08', actual_delivery: '2026-02-07'
+  },
+  {
+    tracking_number: 'INF-2026-010', status: 'delivered', direction: 'export',
+    origin_country: 'BG', origin_city: 'София', dest_country: 'GR', dest_city: 'Патра',
+    sender_name: 'Инфинита ООД', sender_address: 'бул. Черни връх 51Б, 1407 София',
+    recipient_name: 'Panagiotis Medical Supplies', recipient_address: 'Agiou Andreou 86, Patras 26222',
+    courier_id: 3, transport_type: 'road',
+    weight_kg: 12.8, length_cm: 60, width_cm: 40, height_cm: 35, packages_count: 3,
+    hs_code: '9018.90', description: 'Лапароскопски инструментариум Karl Storz - комплект', declared_value: 9800, currency: 'EUR',
+    freight_cost: 32, insurance_cost: 98, customs_duty: 0, total_cost: 130,
+    invoice_number: 'INV-2026-010', po_number: 'PO-2026-007', notes: null,
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-02-05 09:00:00', updated_at: '2026-02-09 14:30:00', estimated_delivery: '2026-02-10', actual_delivery: '2026-02-09'
+  },
+  {
+    tracking_number: 'INF-2026-011', status: 'confirmed', direction: 'import',
+    origin_country: 'NL', origin_city: 'Айндховен', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'Philips Healthcare B.V.', sender_address: 'Veenpluis 6, 5684 PC Best, Netherlands',
+    recipient_name: 'Инфинита ООД', recipient_address: 'бул. Черни връх 51Б, 1407 София',
+    courier_id: 2, transport_type: 'road',
+    weight_kg: 58, length_cm: 80, width_cm: 60, height_cm: 50, packages_count: 4,
+    hs_code: '9018.19', description: 'Дефибрилатори Philips HeartStart MRx x4 + AED FRx x6', declared_value: 31500, currency: 'EUR',
+    freight_cost: 310, insurance_cost: 315, customs_duty: 0, total_cost: 625,
+    invoice_number: 'INV-2026-011', po_number: 'PO-2026-009', notes: 'За спешни центрове - Министерство на здравеопазването',
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-02-10 10:00:00', updated_at: '2026-02-10 10:00:00', estimated_delivery: '2026-02-18', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-012', status: 'in_transit', direction: 'import',
+    origin_country: 'JP', origin_city: 'Токио', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'Canon Medical Systems Corporation', sender_address: '1385 Shimoishigami, Otawara-shi, Tochigi 324-8550',
+    recipient_name: 'УМБАЛ "Александровска" ЕАД', recipient_address: 'ул. Свети Георги Софийски 1, 1431 София',
+    courier_id: 1, transport_type: 'air',
+    weight_kg: 1240, length_cm: 280, width_cm: 180, height_cm: 165, packages_count: 12,
+    hs_code: '9022.11', description: 'CT скенер Canon Aquilion Prime SP 160-срезов с работна станция', declared_value: 485000, currency: 'EUR',
+    freight_cost: 7275, insurance_cost: 4850, customs_duty: 0, total_cost: 12125,
+    invoice_number: 'INV-2026-012', po_number: 'PO-2025-089', notes: 'Проект ОП "Региони в растеж" - УМБАЛ Александровска',
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-02-12 06:00:00', updated_at: '2026-02-25 08:00:00', estimated_delivery: '2026-02-26', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-013', status: 'delivered', direction: 'export',
+    origin_country: 'BG', origin_city: 'София', dest_country: 'RO', dest_city: 'Букурещ',
+    sender_name: 'Инфинита ООД', sender_address: 'бул. Черни връх 51Б, 1407 София',
+    recipient_name: 'MedLife S.A.', recipient_address: 'Calea Grivitei 365, Sector 1, Bucharest 010719',
+    courier_id: 2, transport_type: 'road',
+    weight_kg: 88, length_cm: 120, width_cm: 80, height_cm: 70, packages_count: 6,
+    hs_code: '9019.10', description: 'Физиотерапевтично оборудване BTL-5000 - комплект x3', declared_value: 16800, currency: 'EUR',
+    freight_cost: 195, insurance_cost: 168, customs_duty: 0, total_cost: 363,
+    invoice_number: 'INV-2026-013', po_number: 'PO-2026-002', notes: 'Нов клиент - пробна доставка',
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-02-14 08:00:00', updated_at: '2026-02-18 16:30:00', estimated_delivery: '2026-02-19', actual_delivery: '2026-02-18'
+  },
+  {
+    tracking_number: 'INF-2026-014', status: 'in_transit', direction: 'import',
+    origin_country: 'DE', origin_city: 'Любек', dest_country: 'BG', dest_city: 'Стара Загора',
+    sender_name: 'Drägerwerk AG & Co. KGaA', sender_address: 'Moislinger Allee 53–55, 23558 Lübeck, Germany',
+    recipient_name: 'УМБАЛ "Проф. д-р Стоян Киркович" ЕАД', recipient_address: 'ул. Армейска 11, 6000 Стара Загора',
+    courier_id: 2, transport_type: 'road',
+    weight_kg: 195, length_cm: 160, width_cm: 120, height_cm: 145, packages_count: 2,
+    hs_code: '9020.00', description: 'Анестезиологична система Dräger Atlan A350 XL + газов модул', declared_value: 52000, currency: 'EUR',
+    freight_cost: 637, insurance_cost: 520, customs_duty: 0, total_cost: 1157,
+    invoice_number: 'INV-2026-014', po_number: 'PO-2026-011', notes: null,
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-02-19 07:00:00', updated_at: '2026-02-24 09:00:00', estimated_delivery: '2026-02-25', actual_delivery: null
+  },
   // ─── МАРТ 2026 ──────────────────────────────────────────────────────────
-
-  // 15. Mindray DC-80 - море CN→BG - в транзит
-  [
-    'INF-2026-015', 'in_transit', 'import',
-    'CN', 'Шанхай', 'BG', 'София',
-    'Mindray Medical International Co., Ltd.', 'Mindray Building, Keji 12th Road South, Shenzhen 518057',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    1, 'sea',
-    680, 200, 150, 130, 8,
-    '9018.13', 'МРТ система Mindray Teslatom 1.5T с пълен комплект бобини', 680000, 'EUR',
-    2040, 6800, 0, 8840,
-    'INV-2026-015', 'PO-2025-156', 'За ново отделение по образна диагностика - МБАЛ Благоевград',
-    4, 2,
-    '2026-03-01 08:00:00', '2026-03-03 10:00:00', '2026-04-08', null
-  ],
-
-  // 16. Рехабилитационно оборудване - наземен BG→GR - потвърдена
-  [
-    'INF-2026-016', 'confirmed', 'export',
-    'BG', 'Пловдив', 'GR', 'Солун',
-    'Инфинита ООД', 'бул. Кукленско шосе 28, 4004 Пловдив',
-    'Rehab Center Thessaloniki', 'Tsimisski 43, Thessaloniki 54623',
-    4, 'road',
-    156, 180, 120, 100, 8,
-    '9019.10', 'Рехабилитационни апарати Biodex System 4 Pro + маси за терапия', 28500, 'EUR',
-    358, 285, 0, 643,
-    'INV-2026-016', 'PO-2026-015', null,
-    3, 2,
-    '2026-03-04 09:00:00', '2026-03-04 09:00:00', '2026-03-10', null
-  ],
-
-  // 17. GE Vivid E95 - въздух US→BG - в транзит
-  [
-    'INF-2026-017', 'in_transit', 'import',
-    'US', 'Чикаго', 'BG', 'София',
-    'GE HealthCare Technologies Inc.', '9900 W Innovation Drive, Wauwatosa, WI 53226',
-    'МЦ "Сърдечно-съдова хирургия" ЕООД', 'бул. Пенчо Славейков 52, 1606 София',
-    1, 'air',
-    94, 120, 80, 75, 2,
-    '9018.12', 'Кардиологична ехографска система GE Vivid E95 с 4D кардио сонда', 112000, 'EUR',
-    840, 1120, 0, 1960,
-    'INV-2026-017', 'PO-2026-013', 'Приоритетна пратка - спешна нужда',
-    3, 2,
-    '2026-03-06 12:00:00', '2026-03-14 09:00:00', '2026-03-15', null
-  ],
-
-  // 18. Siemens SOMATOM go.Now - наземен DE→BG - в очакване
-  [
-    'INF-2026-018', 'pending', 'import',
-    'DE', 'Форхайм', 'BG', 'Бургас',
-    'Siemens Healthineers AG', 'Siemensstraße 1, 91301 Forchheim, Germany',
-    'МБАЛ "Дева Мария" ООД', 'ул. Стефан Стамболов 57, 8000 Бургас',
-    2, 'road',
-    890, 240, 160, 170, 10,
-    '9022.11', 'CT скенер Siemens SOMATOM go.Now с UHD иRIS платформа', 398000, 'EUR',
-    4378, 3980, 0, 8358,
-    'INV-2026-018', 'PO-2026-018', 'Изчаква финансиране ОП "Иновации и конкурентоспособност"',
-    4, 2,
-    '2026-03-10 10:00:00', '2026-03-10 10:00:00', '2026-04-05', null
-  ],
-
-  // 19. Кардио устройства - express BG→GR - в транзит
-  [
-    'INF-2026-019', 'in_transit', 'export',
-    'BG', 'София', 'GR', 'Атина',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    'Evangelismos General Hospital', 'Ipsilantou 45-47, Athens 10676',
-    5, 'express',
-    8.2, 45, 35, 25, 1,
-    '9021.50', 'Имплантируем дефибрилатор Medtronic Evoque x2 - спешна доставка', 34000, 'EUR',
-    98, 340, 0, 438,
-    'INV-2026-019', 'PO-2026-020', 'СПЕШНА - пациент чака операция',
-    3, 2,
-    '2026-03-17 14:00:00', '2026-03-18 06:00:00', '2026-03-19', null
-  ],
-
-  // 20. Fresenius Kabi инфузионни помпи - наземен AT→BG - в очакване
-  [
-    'INF-2026-020', 'pending', 'import',
-    'AT', 'Грац', 'BG', 'София',
-    'Fresenius Kabi Austria GmbH', 'Hafnerstraße 36, 8055 Graz, Austria',
-    'Инфинита ООД', 'бул. Черни връх 51Б, 1407 София',
-    2, 'road',
-    112, 130, 90, 80, 8,
-    '9018.90', 'Инфузионни помпи Fresenius Kabi Agilia VP x10 + стойки', 24500, 'EUR',
-    302, 245, 0, 547,
-    'INV-2026-020', 'PO-2026-022', 'Рамкова поръчка болници 2026 - 1ва доставка',
-    4, 2,
-    '2026-03-20 09:00:00', '2026-03-20 09:00:00', '2026-03-28', null
-  ],
+  {
+    tracking_number: 'INF-2026-015', status: 'in_transit', direction: 'import',
+    origin_country: 'CN', origin_city: 'Шанхай', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'Mindray Medical International Co., Ltd.', sender_address: 'Mindray Building, Keji 12th Road South, Shenzhen 518057',
+    recipient_name: 'Инфинита ООД', recipient_address: 'бул. Черни връх 51Б, 1407 София',
+    courier_id: 1, transport_type: 'sea',
+    weight_kg: 680, length_cm: 200, width_cm: 150, height_cm: 130, packages_count: 8,
+    hs_code: '9018.13', description: 'МРТ система Mindray Teslatom 1.5T с пълен комплект бобини', declared_value: 680000, currency: 'EUR',
+    freight_cost: 2040, insurance_cost: 6800, customs_duty: 0, total_cost: 8840,
+    invoice_number: 'INV-2026-015', po_number: 'PO-2025-156', notes: 'За ново отделение по образна диагностика - МБАЛ Благоевград',
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-03-01 08:00:00', updated_at: '2026-03-03 10:00:00', estimated_delivery: '2026-04-08', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-016', status: 'confirmed', direction: 'export',
+    origin_country: 'BG', origin_city: 'Пловдив', dest_country: 'GR', dest_city: 'Солун',
+    sender_name: 'Инфинита ООД', sender_address: 'бул. Кукленско шосе 28, 4004 Пловдив',
+    recipient_name: 'Rehab Center Thessaloniki', recipient_address: 'Tsimisski 43, Thessaloniki 54623',
+    courier_id: 4, transport_type: 'road',
+    weight_kg: 156, length_cm: 180, width_cm: 120, height_cm: 100, packages_count: 8,
+    hs_code: '9019.10', description: 'Рехабилитационни апарати Biodex System 4 Pro + маси за терапия', declared_value: 28500, currency: 'EUR',
+    freight_cost: 358, insurance_cost: 285, customs_duty: 0, total_cost: 643,
+    invoice_number: 'INV-2026-016', po_number: 'PO-2026-015', notes: null,
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-03-04 09:00:00', updated_at: '2026-03-04 09:00:00', estimated_delivery: '2026-03-10', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-017', status: 'in_transit', direction: 'import',
+    origin_country: 'US', origin_city: 'Чикаго', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'GE HealthCare Technologies Inc.', sender_address: '9900 W Innovation Drive, Wauwatosa, WI 53226',
+    recipient_name: 'МЦ "Сърдечно-съдова хирургия" ЕООД', recipient_address: 'бул. Пенчо Славейков 52, 1606 София',
+    courier_id: 1, transport_type: 'air',
+    weight_kg: 94, length_cm: 120, width_cm: 80, height_cm: 75, packages_count: 2,
+    hs_code: '9018.12', description: 'Кардиологична ехографска система GE Vivid E95 с 4D кардио сонда', declared_value: 112000, currency: 'EUR',
+    freight_cost: 840, insurance_cost: 1120, customs_duty: 0, total_cost: 1960,
+    invoice_number: 'INV-2026-017', po_number: 'PO-2026-013', notes: 'Приоритетна пратка - спешна нужда',
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-03-06 12:00:00', updated_at: '2026-03-14 09:00:00', estimated_delivery: '2026-03-15', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-018', status: 'pending', direction: 'import',
+    origin_country: 'DE', origin_city: 'Форхайм', dest_country: 'BG', dest_city: 'Бургас',
+    sender_name: 'Siemens Healthineers AG', sender_address: 'Siemensstraße 1, 91301 Forchheim, Germany',
+    recipient_name: 'МБАЛ "Дева Мария" ООД', recipient_address: 'ул. Стефан Стамболов 57, 8000 Бургас',
+    courier_id: 2, transport_type: 'road',
+    weight_kg: 890, length_cm: 240, width_cm: 160, height_cm: 170, packages_count: 10,
+    hs_code: '9022.11', description: 'CT скенер Siemens SOMATOM go.Now с UHD иRIS платформа', declared_value: 398000, currency: 'EUR',
+    freight_cost: 4378, insurance_cost: 3980, customs_duty: 0, total_cost: 8358,
+    invoice_number: 'INV-2026-018', po_number: 'PO-2026-018', notes: 'Изчаква финансиране ОП "Иновации и конкурентоспособност"',
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-03-10 10:00:00', updated_at: '2026-03-10 10:00:00', estimated_delivery: '2026-04-05', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-019', status: 'in_transit', direction: 'export',
+    origin_country: 'BG', origin_city: 'София', dest_country: 'GR', dest_city: 'Атина',
+    sender_name: 'Инфинита ООД', sender_address: 'бул. Черни връх 51Б, 1407 София',
+    recipient_name: 'Evangelismos General Hospital', recipient_address: 'Ipsilantou 45-47, Athens 10676',
+    courier_id: 5, transport_type: 'express',
+    weight_kg: 8.2, length_cm: 45, width_cm: 35, height_cm: 25, packages_count: 1,
+    hs_code: '9021.50', description: 'Имплантируем дефибрилатор Medtronic Evoque x2 - спешна доставка', declared_value: 34000, currency: 'EUR',
+    freight_cost: 98, insurance_cost: 340, customs_duty: 0, total_cost: 438,
+    invoice_number: 'INV-2026-019', po_number: 'PO-2026-020', notes: 'СПЕШНА - пациент чака операция',
+    assigned_to: 3, created_by: 2,
+    created_at: '2026-03-17 14:00:00', updated_at: '2026-03-18 06:00:00', estimated_delivery: '2026-03-19', actual_delivery: null
+  },
+  {
+    tracking_number: 'INF-2026-020', status: 'pending', direction: 'import',
+    origin_country: 'AT', origin_city: 'Грац', dest_country: 'BG', dest_city: 'София',
+    sender_name: 'Fresenius Kabi Austria GmbH', sender_address: 'Hafnerstraße 36, 8055 Graz, Austria',
+    recipient_name: 'Инфинита ООД', recipient_address: 'бул. Черни връх 51Б, 1407 София',
+    courier_id: 2, transport_type: 'road',
+    weight_kg: 112, length_cm: 130, width_cm: 90, height_cm: 80, packages_count: 8,
+    hs_code: '9018.90', description: 'Инфузионни помпи Fresenius Kabi Agilia VP x10 + стойки', declared_value: 24500, currency: 'EUR',
+    freight_cost: 302, insurance_cost: 245, customs_duty: 0, total_cost: 547,
+    invoice_number: 'INV-2026-020', po_number: 'PO-2026-022', notes: 'Рамкова поръчка болници 2026 - 1ва доставка',
+    assigned_to: 4, created_by: 2,
+    created_at: '2026-03-20 09:00:00', updated_at: '2026-03-20 09:00:00', estimated_delivery: '2026-03-28', actual_delivery: null
+  },
 ]
 
-shipments.forEach(s => insertShipment.run(...s))
-console.log(`✓ ${shipments.length} пратки вмъкнати`)
+shipmentsData.forEach(s => {
+  db.get('shipments').push({ id: nextId('shipments'), ...s }).write()
+})
+console.log(`${shipmentsData.length} пратки вмъкнати`)
 
-// ─── Tracking Events ─────────────────────────────────────────────────────────
-const insertEvent = db.prepare(`
-  INSERT INTO tracking_events (shipment_id, status, location, description, timestamp, created_by)
-  VALUES (?, ?, ?, ?, ?, ?)
-`)
-
-// Вземи ID-тата по tracking number
+// ─── Вземи ID-тата по tracking number ────────────────────────────────────────
 const sid = {}
-db.prepare("SELECT id, tracking_number FROM shipments WHERE tracking_number LIKE 'INF-2026-%'").all()
+db.get('shipments').filter(s => s.tracking_number && s.tracking_number.startsWith('INF-2026-')).value()
   .forEach(r => { sid[r.tracking_number] = r.id })
 
-const events = [
+// ─── Tracking Events ─────────────────────────────────────────────────────────
+const eventsData = [
   // INF-2026-001 (delivered)
-  [sid['INF-2026-001'], 'confirmed',  'Erlangen, DE',      'Пратката е приета от Siemens Healthineers и предадена на Kuehne+Nagel',         '2026-01-05 11:00:00', 2],
-  [sid['INF-2026-001'], 'in_transit', 'Frankfurt Flughafen','Заредена на полет LH8406 за Sofia',                                              '2026-01-06 03:30:00', 2],
-  [sid['INF-2026-001'], 'in_transit', 'Sofia Airport, BG', 'Пристигнала на летище София, предадена на митница',                              '2026-01-06 09:15:00', 2],
-  [sid['INF-2026-001'], 'customs',    'Митница Аерогара София', 'Митнически преглед завършен, освободена',                                   '2026-01-07 14:00:00', 3],
-  [sid['INF-2026-001'], 'in_transit', 'Sofia, BG',         'Пратката е в склад Kuehne+Nagel за последна миля',                               '2026-01-08 09:00:00', 3],
-  [sid['INF-2026-001'], 'delivered',  'София, бул. Черни връх 51Б', 'Доставена и приета от Инфинита ООД - получил Петър Георгиев',           '2026-01-13 14:30:00', 3],
+  { shipment_id: sid['INF-2026-001'], status: 'confirmed',  location: 'Erlangen, DE',              description: 'Пратката е приета от Siemens Healthineers и предадена на Kuehne+Nagel',         timestamp: '2026-01-05 11:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-001'], status: 'in_transit', location: 'Frankfurt Flughafen',        description: 'Заредена на полет LH8406 за Sofia',                                              timestamp: '2026-01-06 03:30:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-001'], status: 'in_transit', location: 'Sofia Airport, BG',          description: 'Пристигнала на летище София, предадена на митница',                              timestamp: '2026-01-06 09:15:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-001'], status: 'customs',    location: 'Митница Аерогара София',     description: 'Митнически преглед завършен, освободена',                                       timestamp: '2026-01-07 14:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-001'], status: 'in_transit', location: 'Sofia, BG',                  description: 'Пратката е в склад Kuehne+Nagel за последна миля',                               timestamp: '2026-01-08 09:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-001'], status: 'delivered',  location: 'София, бул. Черни връх 51Б', description: 'Доставена и приета от Инфинита ООД - получил Петър Георгиев',                   timestamp: '2026-01-13 14:30:00', created_by: 3 },
 
   // INF-2026-002 (in_transit - sea)
-  [sid['INF-2026-002'], 'confirmed',  'Shenzhen, CN',       'Пратката е приета и опакована в Mindray',                                        '2026-01-07 10:00:00', 2],
-  [sid['INF-2026-002'], 'in_transit', 'Yantian Port, CN',   'Натоварена на контейнеровоз MSC Loreto, коносамент MSCUYX987654',                '2026-01-10 16:00:00', 2],
-  [sid['INF-2026-002'], 'in_transit', 'Port Klang, MY',     'Транзит Малайзия - прехвърлен на фидерен кораб',                                '2026-01-18 08:00:00', 4],
-  [sid['INF-2026-002'], 'in_transit', 'Suez Canal',         'Преминаване на Суецкия канал без инциденти',                                     '2026-01-28 12:00:00', 4],
-  [sid['INF-2026-002'], 'in_transit', 'Piraeus Port, GR',   'Транзит пристанище Пирея, очаква фидер до Варна',                               '2026-02-04 09:00:00', 4],
+  { shipment_id: sid['INF-2026-002'], status: 'confirmed',  location: 'Shenzhen, CN',               description: 'Пратката е приета и опакована в Mindray',                                        timestamp: '2026-01-07 10:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-002'], status: 'in_transit', location: 'Yantian Port, CN',           description: 'Натоварена на контейнеровоз MSC Loreto, коносамент MSCUYX987654',                timestamp: '2026-01-10 16:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-002'], status: 'in_transit', location: 'Port Klang, MY',             description: 'Транзит Малайзия - прехвърлен на фидерен кораб',                                timestamp: '2026-01-18 08:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-002'], status: 'in_transit', location: 'Suez Canal',                 description: 'Преминаване на Суецкия канал без инциденти',                                     timestamp: '2026-01-28 12:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-002'], status: 'in_transit', location: 'Piraeus Port, GR',           description: 'Транзит пристанище Пирея, очаква фидер до Варна',                               timestamp: '2026-02-04 09:00:00', created_by: 4 },
 
   // INF-2026-003 (delivered export BG→GR)
-  [sid['INF-2026-003'], 'confirmed',  'София, BG',          'Пратката е подготвена и предадена на Юнимастърс',                               '2026-01-08 08:30:00', 3],
-  [sid['INF-2026-003'], 'in_transit', 'Kulata, BG/GR',      'Преминат граничен пункт Кулата/Промахон без проблеми',                          '2026-01-09 11:20:00', 3],
-  [sid['INF-2026-003'], 'in_transit', 'Thessaloniki, GR',   'Разпределителен склад Юнимастърс Солун',                                         '2026-01-10 18:00:00', 3],
-  [sid['INF-2026-003'], 'delivered',  'Halandri, Athens',   'Доставена в Iatrika Hellas, подписана от д-р Петридис',                          '2026-01-12 16:00:00', 3],
+  { shipment_id: sid['INF-2026-003'], status: 'confirmed',  location: 'София, BG',                  description: 'Пратката е подготвена и предадена на Юнимастърс',                               timestamp: '2026-01-08 08:30:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-003'], status: 'in_transit', location: 'Kulata, BG/GR',              description: 'Преминат граничен пункт Кулата/Промахон без проблеми',                          timestamp: '2026-01-09 11:20:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-003'], status: 'in_transit', location: 'Thessaloniki, GR',           description: 'Разпределителен склад Юнимастърс Солун',                                         timestamp: '2026-01-10 18:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-003'], status: 'delivered',  location: 'Halandri, Athens',           description: 'Доставена в Iatrika Hellas, подписана от д-р Петридис',                          timestamp: '2026-01-12 16:00:00', created_by: 3 },
 
   // INF-2026-004 (delivered AT→BG)
-  [sid['INF-2026-004'], 'confirmed',  'Linz, AT',           'Предадена на Карго-Партнер от Fresenius Medical Care',                           '2026-01-10 07:00:00', 2],
-  [sid['INF-2026-004'], 'in_transit', 'Vienna, AT',         'Групирана с друга пратка в склад Wien-Süd',                                      '2026-01-10 16:00:00', 4],
-  [sid['INF-2026-004'], 'in_transit', 'Budapest, HU',       'Транзит Будапеща',                                                               '2026-01-11 14:00:00', 4],
-  [sid['INF-2026-004'], 'in_transit', 'Калотина, BG',       'Влязла в България при ГКПП Калотина',                                            '2026-01-13 09:30:00', 4],
-  [sid['INF-2026-004'], 'delivered',  'Пловдив, УМБАЛ Пълмед', 'Доставена и приета, придружена от техник на Fresenius за въвеждане в работа','2026-01-14 18:00:00', 4],
+  { shipment_id: sid['INF-2026-004'], status: 'confirmed',  location: 'Linz, AT',                   description: 'Предадена на Карго-Партнер от Fresenius Medical Care',                           timestamp: '2026-01-10 07:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-004'], status: 'in_transit', location: 'Vienna, AT',                 description: 'Групирана с друга пратка в склад Wien-Süd',                                      timestamp: '2026-01-10 16:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-004'], status: 'in_transit', location: 'Budapest, HU',               description: 'Транзит Будапеща',                                                               timestamp: '2026-01-11 14:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-004'], status: 'in_transit', location: 'Калотина, BG',               description: 'Влязла в България при ГКПП Калотина',                                            timestamp: '2026-01-13 09:30:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-004'], status: 'delivered',  location: 'Пловдив, УМБАЛ Пълмед',      description: 'Доставена и приета, придружена от техник на Fresenius за въвеждане в работа',     timestamp: '2026-01-14 18:00:00', created_by: 4 },
 
   // INF-2026-005 (customs - задържана)
-  [sid['INF-2026-005'], 'confirmed',  'Lübeck, DE',         'Предадена на Карго-Партнер от Dräger',                                           '2026-01-13 06:00:00', 2],
-  [sid['INF-2026-005'], 'in_transit', 'Munich, DE',         'Консолидиращ склад за Bulgaria',                                                  '2026-01-14 20:00:00', 3],
-  [sid['INF-2026-005'], 'in_transit', 'Виден, BG',          'Влязла в България при ГКПП Видин/Калафат',                                       '2026-01-18 08:00:00', 3],
-  [sid['INF-2026-005'], 'customs',    'МП Виден, Митница Враца', 'Задържана за митнически контрол - изисква лиценз от ИАЛ за анестезия апарат','2026-01-18 11:00:00', 3],
-  [sid['INF-2026-005'], 'customs',    'МП Виден',           'Документите изпратени до ИАЛ - очаква се одобрение',                             '2026-01-20 11:00:00', 3],
+  { shipment_id: sid['INF-2026-005'], status: 'confirmed',  location: 'Lübeck, DE',                 description: 'Предадена на Карго-Партнер от Dräger',                                           timestamp: '2026-01-13 06:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-005'], status: 'in_transit', location: 'Munich, DE',                 description: 'Консолидиращ склад за Bulgaria',                                                  timestamp: '2026-01-14 20:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-005'], status: 'in_transit', location: 'Виден, BG',                  description: 'Влязла в България при ГКПП Видин/Калафат',                                       timestamp: '2026-01-18 08:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-005'], status: 'customs',    location: 'МП Виден, Митница Враца',    description: 'Задържана за митнически контрол - изисква лиценз от ИАЛ за анестезия апарат',     timestamp: '2026-01-18 11:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-005'], status: 'customs',    location: 'МП Виден',                   description: 'Документите изпратени до ИАЛ - очаква се одобрение',                             timestamp: '2026-01-20 11:00:00', created_by: 3 },
 
   // INF-2026-006 (delivered export BG→GR)
-  [sid['INF-2026-006'], 'confirmed',  'Варна, BG',          'Пратката е подготвена в склад Варна и предадена на НИК Транс',                  '2026-01-15 08:00:00', 4],
-  [sid['INF-2026-006'], 'in_transit', 'Sofia, BG',          'Преминала транзит София',                                                         '2026-01-16 14:00:00', 4],
-  [sid['INF-2026-006'], 'in_transit', 'Promachonas, GR',    'Преминат граничен пункт Промахон',                                               '2026-01-17 10:30:00', 4],
-  [sid['INF-2026-006'], 'delivered',  'Thessaloniki, GR',   'Доставена в Medical Hellas - Солун',                                              '2026-01-18 15:00:00', 4],
+  { shipment_id: sid['INF-2026-006'], status: 'confirmed',  location: 'Варна, BG',                  description: 'Пратката е подготвена в склад Варна и предадена на НИК Транс',                  timestamp: '2026-01-15 08:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-006'], status: 'in_transit', location: 'Sofia, BG',                  description: 'Преминала транзит София',                                                         timestamp: '2026-01-16 14:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-006'], status: 'in_transit', location: 'Promachonas, GR',            description: 'Преминат граничен пункт Промахон',                                               timestamp: '2026-01-17 10:30:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-006'], status: 'delivered',  location: 'Thessaloniki, GR',           description: 'Доставена в Medical Hellas - Солун',                                              timestamp: '2026-01-18 15:00:00', created_by: 4 },
 
   // INF-2026-007 (delivered US→BG air)
-  [sid['INF-2026-007'], 'confirmed',  'Wauwatosa, WI, US',  'Пратката е приета от GE HealthCare и предадена на Kuehne+Nagel',                 '2026-01-18 14:00:00', 2],
-  [sid['INF-2026-007'], 'in_transit', 'Chicago O\'Hare, US','Заредена на полет UA982 Chicago→Frankfurt',                                       '2026-01-19 21:00:00', 2],
-  [sid['INF-2026-007'], 'in_transit', 'Frankfurt Flughafen','Пристигнала FRA, прехвърлена на LH8406 за Sofia',                                 '2026-01-20 15:00:00', 2],
-  [sid['INF-2026-007'], 'in_transit', 'Sofia Airport, BG', 'Пристигнала летище София',                                                        '2026-01-21 09:00:00', 3],
-  [sid['INF-2026-007'], 'customs',    'Митница Аерогара София', 'Митнически преглед и проверка на сертификати CE/FDA',                        '2026-01-22 11:00:00', 3],
-  [sid['INF-2026-007'], 'in_transit', 'Sofia, BG',          'Освободена от митница, в транзит към ИСУЛ',                                       '2026-01-27 14:00:00', 3],
-  [sid['INF-2026-007'], 'delivered',  'София, УМБАЛ ИСУЛ',  'Доставена и приета. GE техник ще пристигне за монтаж на 30.01',                  '2026-01-28 10:00:00', 3],
+  { shipment_id: sid['INF-2026-007'], status: 'confirmed',  location: 'Wauwatosa, WI, US',          description: 'Пратката е приета от GE HealthCare и предадена на Kuehne+Nagel',                 timestamp: '2026-01-18 14:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-007'], status: 'in_transit', location: "Chicago O'Hare, US",         description: 'Заредена на полет UA982 Chicago→Frankfurt',                                       timestamp: '2026-01-19 21:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-007'], status: 'in_transit', location: 'Frankfurt Flughafen',        description: 'Пристигнала FRA, прехвърлена на LH8406 за Sofia',                                 timestamp: '2026-01-20 15:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-007'], status: 'in_transit', location: 'Sofia Airport, BG',          description: 'Пристигнала летище София',                                                        timestamp: '2026-01-21 09:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-007'], status: 'customs',    location: 'Митница Аерогара София',     description: 'Митнически преглед и проверка на сертификати CE/FDA',                            timestamp: '2026-01-22 11:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-007'], status: 'in_transit', location: 'Sofia, BG',                  description: 'Освободена от митница, в транзит към ИСУЛ',                                       timestamp: '2026-01-27 14:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-007'], status: 'delivered',  location: 'София, УМБАЛ ИСУЛ',          description: 'Доставена и приета. GE техник ще пристигне за монтаж на 30.01',                  timestamp: '2026-01-28 10:00:00', created_by: 3 },
 
   // INF-2026-008 (delivered NL→BG air)
-  [sid['INF-2026-008'], 'confirmed',  'Best, NL',           'Приета от Philips Healthcare, документи ОК',                                      '2026-02-02 08:00:00', 2],
-  [sid['INF-2026-008'], 'in_transit', 'Amsterdam Schiphol', 'Заредена на KL1843 Amsterdam→Sofia',                                              '2026-02-03 06:00:00', 2],
-  [sid['INF-2026-008'], 'in_transit', 'Sofia Airport',      'Пристигнала, бързо митническо оформяне (AEO статус)',                             '2026-02-03 12:30:00', 3],
-  [sid['INF-2026-008'], 'delivered',  'София, Токуда Болница', 'Доставена. Philips сервизен инженер извършва инсталация',                     '2026-02-07 12:00:00', 3],
+  { shipment_id: sid['INF-2026-008'], status: 'confirmed',  location: 'Best, NL',                   description: 'Приета от Philips Healthcare, документи ОК',                                      timestamp: '2026-02-02 08:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-008'], status: 'in_transit', location: 'Amsterdam Schiphol',         description: 'Заредена на KL1843 Amsterdam→Sofia',                                              timestamp: '2026-02-03 06:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-008'], status: 'in_transit', location: 'Sofia Airport',              description: 'Пристигнала, бързо митническо оформяне (AEO статус)',                             timestamp: '2026-02-03 12:30:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-008'], status: 'delivered',  location: 'София, Токуда Болница',      description: 'Доставена. Philips сервизен инженер извършва инсталация',                         timestamp: '2026-02-07 12:00:00', created_by: 3 },
 
   // INF-2026-009 (delivered DE→BG road)
-  [sid['INF-2026-009'], 'confirmed',  'Schwaig, DE',        'Предадена на Карго-Партнер',                                                      '2026-02-03 07:30:00', 2],
-  [sid['INF-2026-009'], 'in_transit', 'Vienna, AT',         'Транзит Виена',                                                                   '2026-02-04 18:00:00', 4],
-  [sid['INF-2026-009'], 'in_transit', 'Русе, BG',           'Влязла в България при ГКПП Русе/Гюргево',                                        '2026-02-06 10:00:00', 4],
-  [sid['INF-2026-009'], 'delivered',  'Варна, МБАЛ Св. Анна', 'Доставена и приета от медицинска сестра Стоянова',                             '2026-02-07 17:00:00', 4],
+  { shipment_id: sid['INF-2026-009'], status: 'confirmed',  location: 'Schwaig, DE',                description: 'Предадена на Карго-Партнер',                                                      timestamp: '2026-02-03 07:30:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-009'], status: 'in_transit', location: 'Vienna, AT',                 description: 'Транзит Виена',                                                                   timestamp: '2026-02-04 18:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-009'], status: 'in_transit', location: 'Русе, BG',                   description: 'Влязла в България при ГКПП Русе/Гюргево',                                        timestamp: '2026-02-06 10:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-009'], status: 'delivered',  location: 'Варна, МБАЛ Св. Анна',       description: 'Доставена и приета от медицинска сестра Стоянова',                                timestamp: '2026-02-07 17:00:00', created_by: 4 },
 
   // INF-2026-010 (delivered export BG→GR)
-  [sid['INF-2026-010'], 'confirmed',  'София, BG',          'Пратката е подготвена и предадена на Юнимастърс',                               '2026-02-05 09:00:00', 3],
-  [sid['INF-2026-010'], 'in_transit', 'Kулата/Промахон',    'Преминат граничен пункт',                                                         '2026-02-07 08:45:00', 3],
-  [sid['INF-2026-010'], 'delivered',  'Patras, GR',         'Доставена в Panagiotis Medical',                                                  '2026-02-09 14:30:00', 3],
+  { shipment_id: sid['INF-2026-010'], status: 'confirmed',  location: 'София, BG',                  description: 'Пратката е подготвена и предадена на Юнимастърс',                               timestamp: '2026-02-05 09:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-010'], status: 'in_transit', location: 'Kулата/Промахон',            description: 'Преминат граничен пункт',                                                         timestamp: '2026-02-07 08:45:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-010'], status: 'delivered',  location: 'Patras, GR',                 description: 'Доставена в Panagiotis Medical',                                                  timestamp: '2026-02-09 14:30:00', created_by: 3 },
 
   // INF-2026-011 (confirmed - очаква тръгване)
-  [sid['INF-2026-011'], 'confirmed',  'Best, NL',           'Поръчката потвърдена от Philips, събиране на стоката от склад',                   '2026-02-10 10:00:00', 2],
+  { shipment_id: sid['INF-2026-011'], status: 'confirmed',  location: 'Best, NL',                   description: 'Поръчката потвърдена от Philips, събиране на стоката от склад',                   timestamp: '2026-02-10 10:00:00', created_by: 2 },
 
   // INF-2026-012 (in_transit JP→BG air)
-  [sid['INF-2026-012'], 'confirmed',  'Tochigi, JP',        'Финална проверка и опаковане на Canon CT системата',                              '2026-02-12 06:00:00', 2],
-  [sid['INF-2026-012'], 'in_transit', 'Narita Airport, JP', 'Заредена на CA836 Tokyo→Frankfurt',                                               '2026-02-14 22:00:00', 2],
-  [sid['INF-2026-012'], 'in_transit', 'Frankfurt Flughafen','Пристигнала FRA, прехвърлена и продължава към Sofia',                             '2026-02-15 12:00:00', 3],
-  [sid['INF-2026-012'], 'in_transit', 'Sofia Airport',      'Пристигнала летище София, в процес на митническо оформяне',                       '2026-02-25 08:00:00', 3],
+  { shipment_id: sid['INF-2026-012'], status: 'confirmed',  location: 'Tochigi, JP',                description: 'Финална проверка и опаковане на Canon CT системата',                              timestamp: '2026-02-12 06:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-012'], status: 'in_transit', location: 'Narita Airport, JP',         description: 'Заредена на CA836 Tokyo→Frankfurt',                                               timestamp: '2026-02-14 22:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-012'], status: 'in_transit', location: 'Frankfurt Flughafen',        description: 'Пристигнала FRA, прехвърлена и продължава към Sofia',                             timestamp: '2026-02-15 12:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-012'], status: 'in_transit', location: 'Sofia Airport',              description: 'Пристигнала летище София, в процес на митническо оформяне',                       timestamp: '2026-02-25 08:00:00', created_by: 3 },
 
   // INF-2026-013 (delivered export BG→RO)
-  [sid['INF-2026-013'], 'confirmed',  'София, BG',          'Пратката е подготвена за Румъния',                                               '2026-02-14 08:00:00', 4],
-  [sid['INF-2026-013'], 'in_transit', 'Русе/Гюргево',       'Преминат ГКПП Русе, влязла в Румъния',                                           '2026-02-16 11:00:00', 4],
-  [sid['INF-2026-013'], 'delivered',  'Bucharest, MedLife', 'Доставена, клиентът много доволен - ще следват нови поръчки',                     '2026-02-18 16:30:00', 4],
+  { shipment_id: sid['INF-2026-013'], status: 'confirmed',  location: 'София, BG',                  description: 'Пратката е подготвена за Румъния',                                               timestamp: '2026-02-14 08:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-013'], status: 'in_transit', location: 'Русе/Гюргево',               description: 'Преминат ГКПП Русе, влязла в Румъния',                                           timestamp: '2026-02-16 11:00:00', created_by: 4 },
+  { shipment_id: sid['INF-2026-013'], status: 'delivered',  location: 'Bucharest, MedLife',         description: 'Доставена, клиентът много доволен - ще следват нови поръчки',                     timestamp: '2026-02-18 16:30:00', created_by: 4 },
 
   // INF-2026-014 (in_transit DE→BG road)
-  [sid['INF-2026-014'], 'confirmed',  'Lübeck, DE',         'Предадена на Карго-Партнер от Dräger за Стара Загора',                           '2026-02-19 07:00:00', 2],
-  [sid['INF-2026-014'], 'in_transit', 'Vienna, AT',         'Транзит Виена, товарен на съвместна камионна линия BG',                           '2026-02-21 14:00:00', 3],
-  [sid['INF-2026-014'], 'in_transit', 'Калотина, BG',       'Влязла в България',                                                               '2026-02-24 09:00:00', 3],
+  { shipment_id: sid['INF-2026-014'], status: 'confirmed',  location: 'Lübeck, DE',                 description: 'Предадена на Карго-Партнер от Dräger за Стара Загора',                           timestamp: '2026-02-19 07:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-014'], status: 'in_transit', location: 'Vienna, AT',                 description: 'Транзит Виена, товарен на съвместна камионна линия BG',                           timestamp: '2026-02-21 14:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-014'], status: 'in_transit', location: 'Калотина, BG',               description: 'Влязла в България',                                                               timestamp: '2026-02-24 09:00:00', created_by: 3 },
 
   // INF-2026-015 (in_transit CN sea)
-  [sid['INF-2026-015'], 'confirmed',  'Shenzhen, CN',       'МРТ системата е произведена и готова за експедиция',                              '2026-03-01 08:00:00', 2],
-  [sid['INF-2026-015'], 'in_transit', 'Shanghai Port',      'Натоварена на MSC Beatrice, коносамент MSCU2026-03-015',                          '2026-03-03 10:00:00', 2],
+  { shipment_id: sid['INF-2026-015'], status: 'confirmed',  location: 'Shenzhen, CN',               description: 'МРТ системата е произведена и готова за експедиция',                              timestamp: '2026-03-01 08:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-015'], status: 'in_transit', location: 'Shanghai Port',              description: 'Натоварена на MSC Beatrice, коносамент MSCU2026-03-015',                          timestamp: '2026-03-03 10:00:00', created_by: 2 },
 
   // INF-2026-016 (confirmed - само потвърдена)
-  [sid['INF-2026-016'], 'confirmed',  'Пловдив, BG',        'Поръчката потвърдена, стоката готова за изпращане',                               '2026-03-04 09:00:00', 3],
+  { shipment_id: sid['INF-2026-016'], status: 'confirmed',  location: 'Пловдив, BG',                description: 'Поръчката потвърдена, стоката готова за изпращане',                               timestamp: '2026-03-04 09:00:00', created_by: 3 },
 
   // INF-2026-017 (in_transit US→BG air)
-  [sid['INF-2026-017'], 'confirmed',  'Wauwatosa, WI, US',  'Прието от GE HealthCare, спешна обработка',                                       '2026-03-06 12:00:00', 2],
-  [sid['INF-2026-017'], 'in_transit', 'Chicago O\'Hare',    'Заредена на полет AA100 Chicago→London Heathrow',                                 '2026-03-07 18:00:00', 2],
-  [sid['INF-2026-017'], 'in_transit', 'London Heathrow',    'Прехвърлена на BA855 Heathrow→Sofia',                                             '2026-03-08 10:00:00', 3],
-  [sid['INF-2026-017'], 'in_transit', 'Sofia Airport',      'Пристигнала Sofia Airport - митнически контрол в процес',                         '2026-03-14 09:00:00', 3],
+  { shipment_id: sid['INF-2026-017'], status: 'confirmed',  location: 'Wauwatosa, WI, US',          description: 'Прието от GE HealthCare, спешна обработка',                                       timestamp: '2026-03-06 12:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-017'], status: 'in_transit', location: "Chicago O'Hare",             description: 'Заредена на полет AA100 Chicago→London Heathrow',                                 timestamp: '2026-03-07 18:00:00', created_by: 2 },
+  { shipment_id: sid['INF-2026-017'], status: 'in_transit', location: 'London Heathrow',            description: 'Прехвърлена на BA855 Heathrow→Sofia',                                             timestamp: '2026-03-08 10:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-017'], status: 'in_transit', location: 'Sofia Airport',              description: 'Пристигнала Sofia Airport - митнически контрол в процес',                         timestamp: '2026-03-14 09:00:00', created_by: 3 },
 
   // INF-2026-018 (pending)
-  [sid['INF-2026-018'], 'pending',    'Forchheim, DE',      'Поръчката регистрирана, изчаква потвърждение на финансиране',                     '2026-03-10 10:00:00', 2],
+  { shipment_id: sid['INF-2026-018'], status: 'pending',    location: 'Forchheim, DE',              description: 'Поръчката регистрирана, изчаква потвърждение на финансиране',                     timestamp: '2026-03-10 10:00:00', created_by: 2 },
 
   // INF-2026-019 (in_transit express BG→GR)
-  [sid['INF-2026-019'], 'confirmed',  'София, BG',          'СПЕШНА ПРАТКА - Медtronic устройства в склад, подготвени за изпращане',           '2026-03-17 14:00:00', 3],
-  [sid['INF-2026-019'], 'in_transit', 'Kulata/Promachonas', 'Преминат граничен пункт Кулата 17.03 22:15',                                      '2026-03-17 22:15:00', 3],
-  [sid['INF-2026-019'], 'in_transit', 'Athens, GR',         'В разпределителен склад Plus Ultra - Атина, очаква финална доставка',             '2026-03-18 06:00:00', 3],
+  { shipment_id: sid['INF-2026-019'], status: 'confirmed',  location: 'София, BG',                  description: 'СПЕШНА ПРАТКА - Медtronic устройства в склад, подготвени за изпращане',           timestamp: '2026-03-17 14:00:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-019'], status: 'in_transit', location: 'Kulata/Promachonas',         description: 'Преминат граничен пункт Кулата 17.03 22:15',                                      timestamp: '2026-03-17 22:15:00', created_by: 3 },
+  { shipment_id: sid['INF-2026-019'], status: 'in_transit', location: 'Athens, GR',                 description: 'В разпределителен склад Plus Ultra - Атина, очаква финална доставка',             timestamp: '2026-03-18 06:00:00', created_by: 3 },
 
   // INF-2026-020 (pending)
-  [sid['INF-2026-020'], 'pending',    'Graz, AT',           'Поръчката е пусната, Fresenius Kabi потвърждава наличност',                       '2026-03-20 09:00:00', 4],
+  { shipment_id: sid['INF-2026-020'], status: 'pending',    location: 'Graz, AT',                   description: 'Поръчката е пусната, Fresenius Kabi потвърждава наличност',                       timestamp: '2026-03-20 09:00:00', created_by: 4 },
 ]
 
-events.forEach(e => insertEvent.run(...e))
-console.log(`✓ ${events.length} tracking events вмъкнати`)
+eventsData.forEach(e => {
+  db.get('tracking_events').push({ id: nextId('tracking_events'), ...e }).write()
+})
+console.log(`${eventsData.length} tracking events вмъкнати`)
 
 // ─── Финансови записи ────────────────────────────────────────────────────────
-const insertFin = db.prepare(`
-  INSERT INTO financial_records
-    (type, shipment_id, amount, currency, amount_bgn, description, category, courier_id, invoice_number, due_date, paid_date, status, created_by)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`)
-
 const rate = 1.9558 // EUR→BGN
 
-const financials = [
+const financialsData = [
   // Транспортни фактури
-  ['invoice', sid['INF-2026-001'], 740,   'EUR', +(740*rate).toFixed(2),   'Транспорт + застраховка INF-2026-001 (Siemens ACUSON P500)',       'Транспорт',   1, 'KN-2026-0113',  '2026-02-13', '2026-02-10', 'paid',    5],
-  ['invoice', sid['INF-2026-002'], 1178,  'EUR', +(1178*rate).toFixed(2),  'Морски транспорт INF-2026-002 (Mindray BS-240 Pro)',               'Транспорт',   1, 'KN-2026-0107',  '2026-03-07', null,         'pending', 5],
-  ['invoice', sid['INF-2026-003'], 272,   'EUR', +(272*rate).toFixed(2),   'Наземен транспорт BG→GR INF-2026-003 (Кардиостимулатори)',        'Транспорт',   3, 'UM-2026-0108',  '2026-02-08', '2026-02-05', 'paid',    5],
-  ['invoice', sid['INF-2026-004'], 1742,  'EUR', +(1742*rate).toFixed(2),  'Транспорт AT→BG INF-2026-004 (Fresenius 5008S x4)',               'Транспорт',   2, 'CP-2026-0110',  '2026-02-10', '2026-02-08', 'paid',    5],
-  ['invoice', sid['INF-2026-005'], 1861,  'EUR', +(1861*rate).toFixed(2),  'Транспорт DE→BG INF-2026-005 (Dräger Perseus A500)',              'Транспорт',   2, 'CP-2026-0113',  '2026-02-13', null,         'pending', 5],
-  ['invoice', sid['INF-2026-006'], 245,   'EUR', +(245*rate).toFixed(2),   'Наземен транспорт BG→GR INF-2026-006 (Стryker протези)',          'Транспорт',   4, 'NT-2026-0115',  '2026-02-15', '2026-02-12', 'paid',    5],
-  ['invoice', sid['INF-2026-007'], 3783,  'EUR', +(3783*rate).toFixed(2),  'Въздушен транспорт US→BG INF-2026-007 (GE Optima XR646)',         'Транспорт',   1, 'KN-2026-0118',  '2026-02-18', '2026-02-15', 'paid',    5],
-  ['invoice', sid['INF-2026-008'], 1112,  'EUR', +(1112*rate).toFixed(2),  'Въздушен транспорт NL→BG INF-2026-008 (Philips EPIQ Elite)',      'Транспорт',   1, 'KN-2026-0202',  '2026-03-02', '2026-02-28', 'paid',    5],
-  ['invoice', sid['INF-2026-009'], 282,   'EUR', +(282*rate).toFixed(2),   'Наземен транспорт DE→BG INF-2026-009 (Schiller ЕКГ x5)',         'Транспорт',   2, 'CP-2026-0203',  '2026-03-03', '2026-03-01', 'paid',    5],
-  ['invoice', sid['INF-2026-010'], 130,   'EUR', +(130*rate).toFixed(2),   'Наземен транспорт BG→GR INF-2026-010 (Karl Storz лапароскопия)', 'Транспорт',   3, 'UM-2026-0205',  '2026-03-05', '2026-03-03', 'paid',    5],
-  ['invoice', sid['INF-2026-011'], 625,   'EUR', +(625*rate).toFixed(2),   'Транспорт NL→BG INF-2026-011 (Philips HeartStart x10)',           'Транспорт',   2, 'CP-2026-0210',  '2026-03-10', null,         'pending', 5],
-  ['invoice', sid['INF-2026-012'], 12125, 'EUR', +(12125*rate).toFixed(2), 'Въздушен транспорт + застраховка INF-2026-012 (Canon CT)',        'Транспорт',   1, 'KN-2026-0212',  '2026-03-12', null,         'pending', 5],
-  ['invoice', sid['INF-2026-013'], 363,   'EUR', +(363*rate).toFixed(2),   'Наземен транспорт BG→RO INF-2026-013 (BTL физиотерапия)',         'Транспорт',   2, 'CP-2026-0214',  '2026-03-14', '2026-03-10', 'paid',    5],
-  ['invoice', sid['INF-2026-014'], 1157,  'EUR', +(1157*rate).toFixed(2),  'Транспорт DE→BG INF-2026-014 (Dräger Atlan A350)',                'Транспорт',   2, 'CP-2026-0219',  '2026-03-19', null,         'pending', 5],
-  ['invoice', sid['INF-2026-015'], 8840,  'EUR', +(8840*rate).toFixed(2),  'Морски транспорт + застраховка INF-2026-015 (Mindray МРТ)',       'Транспорт',   1, 'KN-2026-0301',  '2026-04-01', null,         'pending', 5],
-  ['invoice', sid['INF-2026-016'], 643,   'EUR', +(643*rate).toFixed(2),   'Наземен транспорт BG→GR INF-2026-016 (Biodex рехабилитация)',     'Транспорт',   4, 'NT-2026-0304',  '2026-04-04', null,         'pending', 5],
-  ['invoice', sid['INF-2026-017'], 1960,  'EUR', +(1960*rate).toFixed(2),  'Въздушен транспорт US→BG INF-2026-017 (GE Vivid E95)',            'Транспорт',   1, 'KN-2026-0306',  '2026-04-06', null,         'pending', 5],
-  ['invoice', sid['INF-2026-018'], 8358,  'EUR', +(8358*rate).toFixed(2),  'Транспорт DE→BG INF-2026-018 (Siemens SOMATOM go.Now)',           'Транспорт',   2, 'CP-2026-0310',  '2026-04-10', null,         'pending', 5],
-  ['invoice', sid['INF-2026-019'], 438,   'EUR', +(438*rate).toFixed(2),   'Експресна доставка BG→GR INF-2026-019 (Medtronic Evoque)',        'Транспорт',   5, 'PU-2026-0317',  '2026-04-17', null,         'pending', 5],
-  ['invoice', sid['INF-2026-020'], 547,   'EUR', +(547*rate).toFixed(2),   'Транспорт AT→BG INF-2026-020 (Fresenius Kabi помпи x10)',         'Транспорт',   2, 'CP-2026-0320',  '2026-04-20', null,         'pending', 5],
+  { type: 'invoice', shipment_id: sid['INF-2026-001'], amount: 740,   currency: 'EUR', amount_bgn: +(740*rate).toFixed(2),   description: 'Транспорт + застраховка INF-2026-001 (Siemens ACUSON P500)',       category: 'Транспорт',   courier_id: 1, invoice_number: 'KN-2026-0113',  due_date: '2026-02-13', paid_date: '2026-02-10', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-002'], amount: 1178,  currency: 'EUR', amount_bgn: +(1178*rate).toFixed(2),  description: 'Морски транспорт INF-2026-002 (Mindray BS-240 Pro)',               category: 'Транспорт',   courier_id: 1, invoice_number: 'KN-2026-0107',  due_date: '2026-03-07', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-003'], amount: 272,   currency: 'EUR', amount_bgn: +(272*rate).toFixed(2),   description: 'Наземен транспорт BG→GR INF-2026-003 (Кардиостимулатори)',        category: 'Транспорт',   courier_id: 3, invoice_number: 'UM-2026-0108',  due_date: '2026-02-08', paid_date: '2026-02-05', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-004'], amount: 1742,  currency: 'EUR', amount_bgn: +(1742*rate).toFixed(2),  description: 'Транспорт AT→BG INF-2026-004 (Fresenius 5008S x4)',               category: 'Транспорт',   courier_id: 2, invoice_number: 'CP-2026-0110',  due_date: '2026-02-10', paid_date: '2026-02-08', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-005'], amount: 1861,  currency: 'EUR', amount_bgn: +(1861*rate).toFixed(2),  description: 'Транспорт DE→BG INF-2026-005 (Dräger Perseus A500)',              category: 'Транспорт',   courier_id: 2, invoice_number: 'CP-2026-0113',  due_date: '2026-02-13', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-006'], amount: 245,   currency: 'EUR', amount_bgn: +(245*rate).toFixed(2),   description: 'Наземен транспорт BG→GR INF-2026-006 (Стryker протези)',          category: 'Транспорт',   courier_id: 4, invoice_number: 'NT-2026-0115',  due_date: '2026-02-15', paid_date: '2026-02-12', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-007'], amount: 3783,  currency: 'EUR', amount_bgn: +(3783*rate).toFixed(2),  description: 'Въздушен транспорт US→BG INF-2026-007 (GE Optima XR646)',         category: 'Транспорт',   courier_id: 1, invoice_number: 'KN-2026-0118',  due_date: '2026-02-18', paid_date: '2026-02-15', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-008'], amount: 1112,  currency: 'EUR', amount_bgn: +(1112*rate).toFixed(2),  description: 'Въздушен транспорт NL→BG INF-2026-008 (Philips EPIQ Elite)',      category: 'Транспорт',   courier_id: 1, invoice_number: 'KN-2026-0202',  due_date: '2026-03-02', paid_date: '2026-02-28', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-009'], amount: 282,   currency: 'EUR', amount_bgn: +(282*rate).toFixed(2),   description: 'Наземен транспорт DE→BG INF-2026-009 (Schiller ЕКГ x5)',         category: 'Транспорт',   courier_id: 2, invoice_number: 'CP-2026-0203',  due_date: '2026-03-03', paid_date: '2026-03-01', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-010'], amount: 130,   currency: 'EUR', amount_bgn: +(130*rate).toFixed(2),   description: 'Наземен транспорт BG→GR INF-2026-010 (Karl Storz лапароскопия)', category: 'Транспорт',   courier_id: 3, invoice_number: 'UM-2026-0205',  due_date: '2026-03-05', paid_date: '2026-03-03', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-011'], amount: 625,   currency: 'EUR', amount_bgn: +(625*rate).toFixed(2),   description: 'Транспорт NL→BG INF-2026-011 (Philips HeartStart x10)',           category: 'Транспорт',   courier_id: 2, invoice_number: 'CP-2026-0210',  due_date: '2026-03-10', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-012'], amount: 12125, currency: 'EUR', amount_bgn: +(12125*rate).toFixed(2), description: 'Въздушен транспорт + застраховка INF-2026-012 (Canon CT)',        category: 'Транспорт',   courier_id: 1, invoice_number: 'KN-2026-0212',  due_date: '2026-03-12', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-013'], amount: 363,   currency: 'EUR', amount_bgn: +(363*rate).toFixed(2),   description: 'Наземен транспорт BG→RO INF-2026-013 (BTL физиотерапия)',         category: 'Транспорт',   courier_id: 2, invoice_number: 'CP-2026-0214',  due_date: '2026-03-14', paid_date: '2026-03-10', status: 'paid',    created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-014'], amount: 1157,  currency: 'EUR', amount_bgn: +(1157*rate).toFixed(2),  description: 'Транспорт DE→BG INF-2026-014 (Dräger Atlan A350)',                category: 'Транспорт',   courier_id: 2, invoice_number: 'CP-2026-0219',  due_date: '2026-03-19', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-015'], amount: 8840,  currency: 'EUR', amount_bgn: +(8840*rate).toFixed(2),  description: 'Морски транспорт + застраховка INF-2026-015 (Mindray МРТ)',       category: 'Транспорт',   courier_id: 1, invoice_number: 'KN-2026-0301',  due_date: '2026-04-01', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-016'], amount: 643,   currency: 'EUR', amount_bgn: +(643*rate).toFixed(2),   description: 'Наземен транспорт BG→GR INF-2026-016 (Biodex рехабилитация)',     category: 'Транспорт',   courier_id: 4, invoice_number: 'NT-2026-0304',  due_date: '2026-04-04', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-017'], amount: 1960,  currency: 'EUR', amount_bgn: +(1960*rate).toFixed(2),  description: 'Въздушен транспорт US→BG INF-2026-017 (GE Vivid E95)',            category: 'Транспорт',   courier_id: 1, invoice_number: 'KN-2026-0306',  due_date: '2026-04-06', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-018'], amount: 8358,  currency: 'EUR', amount_bgn: +(8358*rate).toFixed(2),  description: 'Транспорт DE→BG INF-2026-018 (Siemens SOMATOM go.Now)',           category: 'Транспорт',   courier_id: 2, invoice_number: 'CP-2026-0310',  due_date: '2026-04-10', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-019'], amount: 438,   currency: 'EUR', amount_bgn: +(438*rate).toFixed(2),   description: 'Експресна доставка BG→GR INF-2026-019 (Medtronic Evoque)',        category: 'Транспорт',   courier_id: 5, invoice_number: 'PU-2026-0317',  due_date: '2026-04-17', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'invoice', shipment_id: sid['INF-2026-020'], amount: 547,   currency: 'EUR', amount_bgn: +(547*rate).toFixed(2),   description: 'Транспорт AT→BG INF-2026-020 (Fresenius Kabi помпи x10)',         category: 'Транспорт',   courier_id: 2, invoice_number: 'CP-2026-0320',  due_date: '2026-04-20', paid_date: null,         status: 'pending', created_by: 5 },
 
   // Режийни разходи Q1 2026
-  ['expense', null, 2400,  'BGN', 2400,  'Наем офис + склад Sofia Tech Park - Януари 2026',     'Наем',        null, null, '2026-01-31', '2026-01-31', 'paid',    5],
-  ['expense', null, 2400,  'BGN', 2400,  'Наем офис + склад Sofia Tech Park - Февруари 2026',    'Наем',        null, null, '2026-02-28', '2026-02-28', 'paid',    5],
-  ['expense', null, 2400,  'BGN', 2400,  'Наем офис + склад Sofia Tech Park - Март 2026',        'Наем',        null, null, '2026-03-31', null,         'pending', 5],
-  ['expense', null, 1850,  'BGN', 1850,  'Застраховка складово съдържание Q1 2026',              'Застраховка', null, null, '2026-01-15', '2026-01-14', 'paid',    5],
-  ['expense', null, 980,   'BGN', 980,   'Куриерски разходи и местни доставки - Януари 2026',    'Разходи',     null, null, '2026-01-31', '2026-01-31', 'paid',    5],
-  ['expense', null, 1240,  'BGN', 1240,  'Куриерски разходи и местни доставки - Февруари 2026',  'Разходи',     null, null, '2026-02-28', '2026-02-28', 'paid',    5],
-  ['expense', null, 760,   'BGN', 760,   'Куриерски разходи и местни доставки - Март 2026',      'Разходи',     null, null, '2026-03-31', null,         'pending', 5],
+  { type: 'expense', shipment_id: null, amount: 2400,  currency: 'BGN', amount_bgn: 2400,  description: 'Наем офис + склад Sofia Tech Park - Януари 2026',     category: 'Наем',        courier_id: null, invoice_number: null, due_date: '2026-01-31', paid_date: '2026-01-31', status: 'paid',    created_by: 5 },
+  { type: 'expense', shipment_id: null, amount: 2400,  currency: 'BGN', amount_bgn: 2400,  description: 'Наем офис + склад Sofia Tech Park - Февруари 2026',    category: 'Наем',        courier_id: null, invoice_number: null, due_date: '2026-02-28', paid_date: '2026-02-28', status: 'paid',    created_by: 5 },
+  { type: 'expense', shipment_id: null, amount: 2400,  currency: 'BGN', amount_bgn: 2400,  description: 'Наем офис + склад Sofia Tech Park - Март 2026',        category: 'Наем',        courier_id: null, invoice_number: null, due_date: '2026-03-31', paid_date: null,         status: 'pending', created_by: 5 },
+  { type: 'expense', shipment_id: null, amount: 1850,  currency: 'BGN', amount_bgn: 1850,  description: 'Застраховка складово съдържание Q1 2026',              category: 'Застраховка', courier_id: null, invoice_number: null, due_date: '2026-01-15', paid_date: '2026-01-14', status: 'paid',    created_by: 5 },
+  { type: 'expense', shipment_id: null, amount: 980,   currency: 'BGN', amount_bgn: 980,   description: 'Куриерски разходи и местни доставки - Януари 2026',    category: 'Разходи',     courier_id: null, invoice_number: null, due_date: '2026-01-31', paid_date: '2026-01-31', status: 'paid',    created_by: 5 },
+  { type: 'expense', shipment_id: null, amount: 1240,  currency: 'BGN', amount_bgn: 1240,  description: 'Куриерски разходи и местни доставки - Февруари 2026',  category: 'Разходи',     courier_id: null, invoice_number: null, due_date: '2026-02-28', paid_date: '2026-02-28', status: 'paid',    created_by: 5 },
+  { type: 'expense', shipment_id: null, amount: 760,   currency: 'BGN', amount_bgn: 760,   description: 'Куриерски разходи и местни доставки - Март 2026',      category: 'Разходи',     courier_id: null, invoice_number: null, due_date: '2026-03-31', paid_date: null,         status: 'pending', created_by: 5 },
 
   // Приходни фактури (продажби/услуги)
-  ['invoice', sid['INF-2026-001'], 1850,  'EUR', +(1850*rate).toFixed(2),  'Логистична услуга + обмитяване INF-2026-001',  'Приход', null, 'INFI-2026-001', '2026-01-20', '2026-01-18', 'paid',    2],
-  ['invoice', sid['INF-2026-003'], 420,   'EUR', +(420*rate).toFixed(2),   'Логистична услуга INF-2026-003',               'Приход', null, 'INFI-2026-003', '2026-01-20', '2026-01-17', 'paid',    2],
-  ['invoice', sid['INF-2026-004'], 2200,  'EUR', +(2200*rate).toFixed(2),  'Логистична услуга + обмитяване INF-2026-004',  'Приход', null, 'INFI-2026-004', '2026-01-28', '2026-01-25', 'paid',    2],
-  ['invoice', sid['INF-2026-006'], 380,   'EUR', +(380*rate).toFixed(2),   'Логистична услуга INF-2026-006',               'Приход', null, 'INFI-2026-006', '2026-01-28', '2026-01-26', 'paid',    2],
-  ['invoice', sid['INF-2026-007'], 4500,  'EUR', +(4500*rate).toFixed(2),  'Логистична услуга + обмитяване INF-2026-007',  'Приход', null, 'INFI-2026-007', '2026-02-10', '2026-02-08', 'paid',    2],
-  ['invoice', sid['INF-2026-008'], 2800,  'EUR', +(2800*rate).toFixed(2),  'Логистична услуга + обмитяване INF-2026-008',  'Приход', null, 'INFI-2026-008', '2026-02-20', '2026-02-18', 'paid',    2],
-  ['invoice', sid['INF-2026-009'], 680,   'EUR', +(680*rate).toFixed(2),   'Логистична услуга INF-2026-009',               'Приход', null, 'INFI-2026-009', '2026-02-20', '2026-02-19', 'paid',    2],
-  ['invoice', sid['INF-2026-010'], 320,   'EUR', +(320*rate).toFixed(2),   'Логистична услуга INF-2026-010',               'Приход', null, 'INFI-2026-010', '2026-02-20', '2026-02-18', 'paid',    2],
-  ['invoice', sid['INF-2026-013'], 580,   'EUR', +(580*rate).toFixed(2),   'Логистична услуга BG→RO INF-2026-013',         'Приход', null, 'INFI-2026-013', '2026-03-01', '2026-02-28', 'paid',    2],
+  { type: 'invoice', shipment_id: sid['INF-2026-001'], amount: 1850,  currency: 'EUR', amount_bgn: +(1850*rate).toFixed(2),  description: 'Логистична услуга + обмитяване INF-2026-001',  category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-001', due_date: '2026-01-20', paid_date: '2026-01-18', status: 'paid', created_by: 2 },
+  { type: 'invoice', shipment_id: sid['INF-2026-003'], amount: 420,   currency: 'EUR', amount_bgn: +(420*rate).toFixed(2),   description: 'Логистична услуга INF-2026-003',               category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-003', due_date: '2026-01-20', paid_date: '2026-01-17', status: 'paid', created_by: 2 },
+  { type: 'invoice', shipment_id: sid['INF-2026-004'], amount: 2200,  currency: 'EUR', amount_bgn: +(2200*rate).toFixed(2),  description: 'Логистична услуга + обмитяване INF-2026-004',  category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-004', due_date: '2026-01-28', paid_date: '2026-01-25', status: 'paid', created_by: 2 },
+  { type: 'invoice', shipment_id: sid['INF-2026-006'], amount: 380,   currency: 'EUR', amount_bgn: +(380*rate).toFixed(2),   description: 'Логистична услуга INF-2026-006',               category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-006', due_date: '2026-01-28', paid_date: '2026-01-26', status: 'paid', created_by: 2 },
+  { type: 'invoice', shipment_id: sid['INF-2026-007'], amount: 4500,  currency: 'EUR', amount_bgn: +(4500*rate).toFixed(2),  description: 'Логистична услуга + обмитяване INF-2026-007',  category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-007', due_date: '2026-02-10', paid_date: '2026-02-08', status: 'paid', created_by: 2 },
+  { type: 'invoice', shipment_id: sid['INF-2026-008'], amount: 2800,  currency: 'EUR', amount_bgn: +(2800*rate).toFixed(2),  description: 'Логистична услуга + обмитяване INF-2026-008',  category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-008', due_date: '2026-02-20', paid_date: '2026-02-18', status: 'paid', created_by: 2 },
+  { type: 'invoice', shipment_id: sid['INF-2026-009'], amount: 680,   currency: 'EUR', amount_bgn: +(680*rate).toFixed(2),   description: 'Логистична услуга INF-2026-009',               category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-009', due_date: '2026-02-20', paid_date: '2026-02-19', status: 'paid', created_by: 2 },
+  { type: 'invoice', shipment_id: sid['INF-2026-010'], amount: 320,   currency: 'EUR', amount_bgn: +(320*rate).toFixed(2),   description: 'Логистична услуга INF-2026-010',               category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-010', due_date: '2026-02-20', paid_date: '2026-02-18', status: 'paid', created_by: 2 },
+  { type: 'invoice', shipment_id: sid['INF-2026-013'], amount: 580,   currency: 'EUR', amount_bgn: +(580*rate).toFixed(2),   description: 'Логистична услуга BG→RO INF-2026-013',         category: 'Приход', courier_id: null, invoice_number: 'INFI-2026-013', due_date: '2026-03-01', paid_date: '2026-02-28', status: 'paid', created_by: 2 },
 ]
 
-financials.forEach(f => insertFin.run(...f))
-console.log(`✓ ${financials.length} финансови записа вмъкнати`)
+financialsData.forEach(f => {
+  db.get('financial_records').push({ id: nextId('financial_records'), created_at: now(), ...f }).write()
+})
+console.log(`${financialsData.length} финансови записа вмъкнати`)
 
 // ─── Обобщение ───────────────────────────────────────────────────────────────
-const counts = db.prepare("SELECT status, COUNT(*) as n FROM shipments WHERE tracking_number LIKE 'INF-2026-%' GROUP BY status").all()
+const counts = {}
+db.get('shipments').filter(s => s.tracking_number && s.tracking_number.startsWith('INF-2026-')).value()
+  .forEach(s => { counts[s.status] = (counts[s.status] || 0) + 1 })
 
-console.log('\n📦 Пратки по статус:')
-counts.forEach(r => console.log(`   ${r.status.padEnd(12)} → ${r.n}`))
-console.log('\n✅ Готово! Базата данни е заредена с данни за Q1 2026.')
+console.log('\nПратки по статус:')
+Object.entries(counts).forEach(([status, n]) => console.log(`   ${status.padEnd(12)} -> ${n}`))
+console.log('\nГотово! Базата данни е заредена с данни за Q1 2026.')

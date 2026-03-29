@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken')
-const db = require('../database/db')
+const { db } = require('../database/db')
 
 const auth = (req, res, next) => {
   const header = req.headers.authorization
@@ -9,7 +9,7 @@ const auth = (req, res, next) => {
   const token = header.split(' ')[1]
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET || 'infinita_secret')
-    const user = db.prepare('SELECT id, username, role, first_name, last_name, active FROM users WHERE id = ?').get(payload.id)
+    const user = db.get('users').find({ id: payload.id }).value()
     if (!user || !user.active) return res.status(401).json({ error: 'Потребителят не е активен' })
     req.user = user
     next()

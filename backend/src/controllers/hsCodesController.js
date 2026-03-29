@@ -1,54 +1,76 @@
-const db = require('../database/db')
+const { db, nextId, now } = require('../database/db')
 
 exports.list = (req, res) => {
   const { search, category } = req.query
-  const conditions = []
-  const params = []
+  let rows = db.get('hs_codes').value()
   if (search) {
-    conditions.push('(code LIKE ? OR description_bg LIKE ? OR description_en LIKE ?)')
-    const t = `%${search}%`
-    params.push(t, t, t)
+    const s = search.toLowerCase()
+    rows = rows.filter(h =>
+      (h.code && h.code.toLowerCase().includes(s)) ||
+      (h.description_bg && h.description_bg.toLowerCase().includes(s)) ||
+      (h.description_en && h.description_en.toLowerCase().includes(s))
+    )
   }
-  if (category) { conditions.push('category = ?'); params.push(category) }
-  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''
-  const rows = db.prepare(`SELECT * FROM hs_codes ${where} ORDER BY code`).all(...params)
+  if (category) {
+    rows = rows.filter(h => h.category === category)
+  }
+  rows = rows.slice().sort((a, b) => (a.code || '').localeCompare(b.code || ''))
   res.json(rows)
 }
 
 exports.get = (req, res) => {
-  const hs = db.prepare('SELECT * FROM hs_codes WHERE id = ? OR code = ?').get(req.params.id, req.params.id)
+  const param = req.params.id
+  const hs = db.get('hs_codes').find(h => h.id == param || h.code == param).value()
   if (!hs) return res.status(404).json({ error: 'HS кодът не е намерен' })
   res.json(hs)
 }
 
 exports.categories = (req, res) => {
-  const cats = db.prepare('SELECT DISTINCT category FROM hs_codes ORDER BY category').all().map(r => r.category)
+  const all = db.get('hs_codes').value()
+  const cats = [...new Set(all.map(h => h.category).filter(Boolean))].sort()
   res.json(cats)
 }
 
 exports.create = (req, res) => {
   const { code, description_bg, description_en, category, duty_rate, vat_rate, notes } = req.body
   if (!code || !description_bg || !category) return res.status(400).json({ error: 'Кодът, описанието и категорията са задължителни' })
-  try {
-    const result = db.prepare(`INSERT INTO hs_codes (code,description_bg,description_en,category,duty_rate,vat_rate,notes) VALUES (?,?,?,?,?,?,?)`)
-      .run(code, description_bg, description_en||null, category, duty_rate||0, vat_rate||20, notes||null)
-    res.status(201).json({ id: result.lastInsertRowid })
-  } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'HS кодът вече съществува' })
-    throw e
-  }
+  const existing = db.get('hs_codes').find({ code }).value()
+  if (existing) return res.status(409).json({ error: 'HS кодът вече съществува' })
+  const id = nextId('hs_codes')
+  db.get('hs_codes').push({
+    id,
+    code,
+    description_bg,
+    description_en: description_en || null,
+    category,
+    duty_rate: duty_rate || 0,
+    vat_rate: vat_rate || 20,
+    notes: notes || null,
+    created_at: now()
+  }).write()
+  res.status(201).json({ id })
 }
 
 exports.update = (req, res) => {
+  const id = parseInt(req.params.id)
   const { code, description_bg, description_en, category, duty_rate, vat_rate, notes } = req.body
-  const r = db.prepare(`UPDATE hs_codes SET code=?,description_bg=?,description_en=?,category=?,duty_rate=?,vat_rate=?,notes=? WHERE id=?`)
-    .run(code, description_bg, description_en||null, category, duty_rate||0, vat_rate||20, notes||null, req.params.id)
-  if (!r.changes) return res.status(404).json({ error: 'HS кодът не е намерен' })
+  const hs = db.get('hs_codes').find({ id }).value()
+  if (!hs) return res.status(404).json({ error: 'HS кодът не е намерен' })
+  db.get('hs_codes').find({ id }).assign({
+    code,
+    description_bg,
+    description_en: description_en || null,
+    category,
+    duty_rate: duty_rate || 0,
+    vat_rate: vat_rate || 20,
+    notes: notes || null
+  }).write()
   res.json({ message: 'HS кодът е обновен' })
 }
 
 exports.remove = (req, res) => {
-  db.prepare('DELETE FROM hs_codes WHERE id = ?').run(req.params.id)
+  const id = parseInt(req.params.id)
+  db.get('hs_codes').remove({ id }).write()
   res.json({ message: 'HS кодът е изтрит' })
 }
 
@@ -57,8 +79,12 @@ exports.classify = (req, res) => {
   if (!description) return res.status(400).json({ error: 'Въведете описание' })
   const keywords = description.toLowerCase().split(' ').filter(w => w.length > 3)
   const results = []
+  const allCodes = db.get('hs_codes').value()
   for (const kw of keywords) {
-    const rows = db.prepare(`SELECT * FROM hs_codes WHERE lower(description_bg) LIKE ? OR lower(description_en) LIKE ? LIMIT 5`).all(`%${kw}%`, `%${kw}%`)
+    const rows = allCodes.filter(h =>
+      (h.description_bg && h.description_bg.toLowerCase().includes(kw)) ||
+      (h.description_en && h.description_en.toLowerCase().includes(kw))
+    ).slice(0, 5)
     rows.forEach(r => { if (!results.find(x => x.id === r.id)) results.push(r) })
   }
   res.json(results.slice(0, 10))
