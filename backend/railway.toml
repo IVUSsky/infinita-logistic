@@ -1,0 +1,12 @@
+[build]
+builder      = "nixpacks"
+buildCommand = "npm install"
+
+[deploy]
+startCommand          = "node src/database/seed2026.js && node server.js"
+restartPolicyType     = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+[deploy.healthcheck]
+path    = "/health"
+timeout = 30
