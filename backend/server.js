@@ -50,6 +50,16 @@ app.get('/health', (_, res) => res.json({
   db_path: process.env.DB_PATH || './database/infinita.json'
 }))
 
+// ─── Debug login (temporary) ──────────────────────────────────────────────────
+app.post('/api/debug-login', (req, res) => {
+  const bcrypt = require('bcryptjs')
+  const { username, password } = req.body
+  const user = db.get('users').find(u => u.username === username || u.email === username).value()
+  if (!user) return res.json({ found: false, users_in_db: db.get('users').value().map(u => u.username) })
+  const match = bcrypt.compareSync(password, user.password)
+  res.json({ found: true, active: user.active, match, username: user.username, role: user.role })
+})
+
 // ─── Manual seed (temporary) ──────────────────────────────────────────────────
 app.post('/api/seed-reset', (req, res) => {
   const { secret } = req.body
