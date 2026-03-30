@@ -6,9 +6,16 @@ const errorHandler = require('./src/middleware/errorHandler')
 
 // Auto-seed if database is empty
 const { db } = require('./src/database/db')
-if (db.get('users').value().length === 0) {
-  console.log('База данни е празна — стартиране на seed...')
-  require('./src/database/seed')
+try {
+  if (db.get('users').value().length === 0) {
+    console.log('База данни е празна — стартиране на seed...')
+    require('./src/database/seed')
+    console.log('Seed завърши успешно. Потребители:', db.get('users').value().length)
+  } else {
+    console.log('База данни има потребители:', db.get('users').value().length)
+  }
+} catch (e) {
+  console.error('Seed грешка:', e.message)
 }
 
 const app  = express()
@@ -35,7 +42,29 @@ app.use(express.urlencoded({ extended: true }))
 app.use('/api', require('./src/routes/index'))
 
 // ─── Health check ─────────────────────────────────────────────────────────────
-app.get('/health', (_, res) => res.json({ status: 'ok', app: 'Infinita Logistic API', time: new Date().toISOString() }))
+app.get('/health', (_, res) => res.json({
+  status: 'ok',
+  app: 'Infinita Logistic API',
+  time: new Date().toISOString(),
+  users: db.get('users').value().length,
+  db_path: process.env.DB_PATH || './database/infinita.json'
+}))
+
+// ─── Manual seed (temporary) ──────────────────────────────────────────────────
+app.post('/api/seed-reset', (req, res) => {
+  const { secret } = req.body
+  if (secret !== (process.env.SEED_SECRET || 'infinita-seed-2026')) {
+    return res.status(403).json({ error: 'Невалиден secret' })
+  }
+  try {
+    // Clear module cache so seed runs fresh
+    delete require.cache[require.resolve('./src/database/seed')]
+    require('./src/database/seed')
+    res.json({ ok: true, users: db.get('users').value().length })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
 
 app.use(errorHandler)
 
