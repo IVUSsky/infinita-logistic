@@ -7,12 +7,12 @@ const NAV = [
   { to: '/shipments', icon: Package,         label: 'Пратки' },
   { to: '/couriers',  icon: Truck,           label: 'Куриери' },
   { to: '/hs-codes',  icon: FileCode,        label: 'HS Кодове' },
-  { to: '/financial', icon: BarChart3,       label: 'Финанси' },
+  { to: '/financial', icon: BarChart3,       label: 'Финанси', managerOnly: true },
   { to: '/tracking',  icon: MapPin,          label: 'Tracking' },
 ]
 
 export default function Sidebar({ open, onClose }) {
-  const { user } = useAuth()
+  const { user, isManager } = useAuth()
 
   return (
     <>
@@ -36,7 +36,7 @@ export default function Sidebar({ open, onClose }) {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV.map(({ to, icon: Icon, label }) => (
+          {NAV.filter(item => !item.managerOnly || isManager).map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}

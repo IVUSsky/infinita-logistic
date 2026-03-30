@@ -49,8 +49,8 @@ router.put('/hs-codes/:id',          auth, requireRole('admin','manager'), hs_ct
 router.delete('/hs-codes/:id',       auth, requireRole('admin'), hs_ctrl.remove)
 
 // ─── Financial ────────────────────────────────────────────────────────────────
-router.get('/financial/dashboard',  auth, fin_ctrl.dashboard)
-router.get('/financial',            auth, fin_ctrl.list)
+router.get('/financial/dashboard',  auth, requireRole('admin','manager'), fin_ctrl.dashboard)
+router.get('/financial',            auth, requireRole('admin','manager'), fin_ctrl.list)
 router.post('/financial',           auth, requireRole('admin','manager'), fin_ctrl.create)
 router.put('/financial/:id',        auth, requireRole('admin','manager'), fin_ctrl.update)
 router.delete('/financial/:id',     auth, requireRole('admin'), fin_ctrl.remove)

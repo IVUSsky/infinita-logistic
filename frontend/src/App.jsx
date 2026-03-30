@@ -16,6 +16,13 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/login" replace />
 }
 
+function ManagerRoute({ children }) {
+  const { user, loading, isManager } = useAuth()
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="lg" /></div>
+  if (!user) return <Navigate to="/login" replace />
+  return isManager ? children : <Navigate to="/" replace />
+}
+
 function AppRoutes() {
   const { user, loading } = useAuth()
   if (loading) return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="lg" /></div>
@@ -28,7 +35,7 @@ function AppRoutes() {
         <Route path="shipments"  element={<ShipmentsPage />} />
         <Route path="couriers"   element={<CouriersPage />} />
         <Route path="hs-codes"   element={<HsCodesPage />} />
-        <Route path="financial"  element={<FinancialPage />} />
+        <Route path="financial"  element={<ManagerRoute><FinancialPage /></ManagerRoute>} />
         <Route path="tracking"   element={<TrackingPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
