@@ -4,6 +4,13 @@ const cors    = require('cors')
 const path    = require('path')
 const errorHandler = require('./src/middleware/errorHandler')
 
+// Auto-seed if database is empty
+const { db } = require('./src/database/db')
+if (db.get('users').value().length === 0) {
+  console.log('База данни е празна — стартиране на seed...')
+  require('./src/database/seed')
+}
+
 const app  = express()
 const PORT = process.env.PORT || 5000
 
