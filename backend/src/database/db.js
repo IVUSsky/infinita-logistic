@@ -17,7 +17,8 @@ db.defaults({
   hs_codes: [],
   shipments: [],
   tracking_events: [],
-  financial_records: []
+  financial_records: [],
+  shipment_documents: []
 }).write()
 
 function nextId(collection) {

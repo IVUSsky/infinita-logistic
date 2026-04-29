@@ -1,4 +1,8 @@
 const router = require('express').Router()
+const path   = require('path')
+const multer = require('multer')
+const fs     = require('fs')
+
 const { auth, requireRole } = require('../middleware/auth')
 const auth_ctrl    = require('../controllers/authController')
 const ship_ctrl    = require('../controllers/shipmentsController')
@@ -6,9 +10,23 @@ const courier_ctrl = require('../controllers/couriersController')
 const hs_ctrl      = require('../controllers/hsCodesController')
 const fin_ctrl     = require('../controllers/financialController')
 const track_ctrl   = require('../controllers/trackingController')
-const multer       = require('multer')
+const doc_ctrl     = require('../controllers/documentsController')
 
+// ─── Multer: CSV import (memory) ──────────────────────────────────────────────
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
+
+// ─── Multer: document attachments (disk) ─────────────────────────────────────
+const UPLOADS_DIR = doc_ctrl.UPLOADS_DIR
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+
+const docStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `doc_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`)
+  }
+})
+const docUpload = multer({ storage: docStorage, limits: { fileSize: 10 * 1024 * 1024 } })
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 router.post('/auth/login',           auth_ctrl.login)
@@ -27,6 +45,12 @@ router.get('/shipments/:id',    auth, ship_ctrl.get)
 router.post('/shipments',       auth, ship_ctrl.create)
 router.put('/shipments/:id',    auth, ship_ctrl.update)
 router.delete('/shipments/:id', auth, requireRole('admin','manager'), ship_ctrl.remove)
+
+// ─── Shipment Documents ───────────────────────────────────────────────────────
+router.get('/shipments/:id/documents',  auth, doc_ctrl.list)
+router.post('/shipments/:id/documents', auth, docUpload.single('file'), doc_ctrl.upload)
+router.get('/documents/:docId/download',auth, doc_ctrl.download)
+router.delete('/documents/:docId',      auth, doc_ctrl.remove)
 
 // ─── Couriers ─────────────────────────────────────────────────────────────────
 router.get('/couriers',             auth, courier_ctrl.list)
@@ -57,7 +81,7 @@ router.delete('/financial/:id',     auth, requireRole('admin'), fin_ctrl.remove)
 
 // ─── Tracking ─────────────────────────────────────────────────────────────────
 router.get('/tracking',             auth, track_ctrl.listAll)
-router.get('/tracking/:number',     track_ctrl.getByTracking)   // публичен endpoint
+router.get('/tracking/:number',     track_ctrl.getByTracking)
 router.post('/tracking/events',     auth, track_ctrl.addEvent)
 router.put('/tracking/events/:id',  auth, track_ctrl.updateEvent)
 router.delete('/tracking/events/:id', auth, requireRole('admin','manager'), track_ctrl.deleteEvent)
