@@ -11,6 +11,7 @@ const hs_ctrl      = require('../controllers/hsCodesController')
 const fin_ctrl     = require('../controllers/financialController')
 const track_ctrl   = require('../controllers/trackingController')
 const doc_ctrl     = require('../controllers/documentsController')
+const analytics_ctrl = require('../controllers/analyticsController')
 
 // ─── Multer: CSV import (memory) ──────────────────────────────────────────────
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
@@ -45,6 +46,9 @@ router.get('/shipments/:id',    auth, ship_ctrl.get)
 router.post('/shipments',       auth, ship_ctrl.create)
 router.put('/shipments/:id',    auth, ship_ctrl.update)
 router.delete('/shipments/:id', auth, requireRole('admin','manager'), ship_ctrl.remove)
+
+// ─── Analytics ───────────────────────────────────────────────────────────────
+router.get('/analytics', auth, requireRole('admin','manager'), analytics_ctrl.get)
 
 // ─── Shipment Documents ───────────────────────────────────────────────────────
 router.get('/shipments/:id/documents',  auth, doc_ctrl.list)
