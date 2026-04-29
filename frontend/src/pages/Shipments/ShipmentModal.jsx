@@ -602,49 +602,6 @@ export default function ShipmentModal({ open, data, onClose, onSave }) {
               </div>
             </div>
 
-            {/* Calculation panel */}
-            {(freightPct || freightPerKg || freightPerCbm) && (
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4">
-                <h4 className="text-sm font-semibold text-blue-800 mb-3">Анализ на транспортните разходи</h4>
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  {freightPct && (
-                    <div className="bg-white rounded-lg p-3 text-center shadow-sm border border-blue-100">
-                      <div className="text-2xl font-bold text-blue-700">{freightPct}%</div>
-                      <div className="text-xs text-gray-500 mt-0.5">от фактурната стойност</div>
-                    </div>
-                  )}
-                  {freightPerKg && (
-                    <div className="bg-white rounded-lg p-3 text-center shadow-sm border border-blue-100">
-                      <div className="text-2xl font-bold text-blue-700">{freightPerKg} €</div>
-                      <div className="text-xs text-gray-500 mt-0.5">на килограм</div>
-                    </div>
-                  )}
-                  {freightPerCbm && (
-                    <div className="bg-white rounded-lg p-3 text-center shadow-sm border border-blue-100">
-                      <div className="text-2xl font-bold text-blue-700">{freightPerCbm} €</div>
-                      <div className="text-xs text-gray-500 mt-0.5">на кубичен метър</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* EUR equivalents */}
-                {Object.keys(eurRates).length > 0 && (
-                  <div className="text-xs text-blue-600 space-y-0.5 pt-2 border-t border-blue-100">
-                    {form.declared_value_currency !== 'EUR' && invoiceEUR && (
-                      <div>Фактурна стойност: <strong>{invoiceEUR.toFixed(2)} EUR</strong>
-                        {' '}(курс: 1 EUR = {eurRates[form.declared_value_currency]?.toFixed(4)} {form.declared_value_currency})</div>
-                    )}
-                    {form.freight_cost_currency !== 'EUR' && freightEUR && (
-                      <div>Транспорт: <strong>{freightEUR.toFixed(2)} EUR</strong>
-                        {' '}(курс: 1 EUR = {eurRates[form.freight_cost_currency]?.toFixed(4)} {form.freight_cost_currency})</div>
-                    )}
-                    {rateDate && (
-                      <div className="text-gray-400 pt-1">Курс към: {new Date(rateDate).toLocaleDateString('bg-BG')}</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ── Очаквано ДДС & реални стойности при доставка ── */}
             <div className="border border-purple-200 rounded-xl p-4 bg-purple-50 space-y-3">
