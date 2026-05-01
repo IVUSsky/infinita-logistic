@@ -8,10 +8,11 @@ const auth_ctrl    = require('../controllers/authController')
 const ship_ctrl    = require('../controllers/shipmentsController')
 const courier_ctrl = require('../controllers/couriersController')
 const hs_ctrl      = require('../controllers/hsCodesController')
-const fin_ctrl     = require('../controllers/financialController')
-const track_ctrl   = require('../controllers/trackingController')
-const doc_ctrl     = require('../controllers/documentsController')
+const fin_ctrl       = require('../controllers/financialController')
+const track_ctrl     = require('../controllers/trackingController')
+const doc_ctrl       = require('../controllers/documentsController')
 const analytics_ctrl = require('../controllers/analyticsController')
+const contents_ctrl  = require('../controllers/contentsController')
 
 // ─── Multer: CSV import (memory) ──────────────────────────────────────────────
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
@@ -82,6 +83,13 @@ router.get('/financial',            auth, requireRole('admin','manager'), fin_ct
 router.post('/financial',           auth, requireRole('admin','manager'), fin_ctrl.create)
 router.put('/financial/:id',        auth, requireRole('admin','manager'), fin_ctrl.update)
 router.delete('/financial/:id',     auth, requireRole('admin'), fin_ctrl.remove)
+
+// ─── Contents (Packing Lists) ─────────────────────────────────────────────────
+router.get('/contents',             auth, contents_ctrl.list)
+router.get('/contents/:id',         auth, contents_ctrl.get)
+router.post('/contents/upload',     auth, upload.single('file'), contents_ctrl.upload)
+router.put('/contents/:id',         auth, requireRole('admin','manager'), contents_ctrl.updateItem)
+router.delete('/contents/:id',      auth, requireRole('admin','manager'), contents_ctrl.remove)
 
 // ─── Tracking ─────────────────────────────────────────────────────────────────
 router.get('/tracking',             auth, track_ctrl.listAll)

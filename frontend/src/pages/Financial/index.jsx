@@ -49,7 +49,12 @@ export default function FinancialPage() {
   const handleSave = async (e) => {
     e.preventDefault()
     const fd = new FormData(e.target)
-    const body = { ...Object.fromEntries(fd), amount: parseFloat(fd.get('amount')), amount_bgn: parseFloat(fd.get('amount_bgn')) || null }
+    const body = {
+      ...Object.fromEntries(fd),
+      amount: parseFloat(fd.get('amount')),
+      amount_bgn: parseFloat(fd.get('amount_bgn')) || null,
+      invoice_value: fd.get('invoice_value') ? parseFloat(fd.get('invoice_value')) : null
+    }
     try {
       if (modal.data?.id) { await api.put(`/financial/${modal.data.id}`, body); toast.success('Записът е обновен') }
       else { await api.post('/financial', body); toast.success('Записът е добавен') }
@@ -138,7 +143,7 @@ export default function FinancialPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    {['Tracking №','Маршрут','Куриер','Транспортна цена','Обща цена','Дата'].map(h=>(
+                    {['Tracking №','Маршрут','Куриер','Транспорт','Фактурна стойност','% транспорт','Цена/кг','Дата'].map(h=>(
                       <th key={h} className="table-header">{h}</th>
                     ))}
                   </tr>
@@ -150,7 +155,18 @@ export default function FinancialPage() {
                       <td className="table-cell text-sm">{s.origin_country} → {s.dest_country}</td>
                       <td className="table-cell text-sm">{s.courier||'—'}</td>
                       <td className="table-cell font-medium">{fmtMoney(s.freight_cost, s.currency)}</td>
-                      <td className="table-cell font-medium">{fmtMoney(s.total_cost, s.currency)}</td>
+                      <td className="table-cell">
+                        {s.invoice_value ? fmtMoney(s.invoice_value, s.invoice_value_currency) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="table-cell">
+                        {s.transport_pct_of_invoice != null
+                          ? <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${s.transport_pct_of_invoice > 20 ? 'bg-red-100 text-red-700' : s.transport_pct_of_invoice > 10 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{s.transport_pct_of_invoice}%</span>
+                          : <span className="text-gray-300">—</span>
+                        }
+                      </td>
+                      <td className="table-cell text-sm">
+                        {s.cost_per_kg != null ? `€${s.cost_per_kg}/кг` : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="table-cell text-xs text-gray-400">{fmtDate(s.created_at)}</td>
                     </tr>
                   ))}
@@ -244,6 +260,14 @@ export default function FinancialPage() {
           <div className="grid grid-cols-2 gap-4">
             <div><label className="label">Падеж</label><input className="input" type="date" name="due_date" defaultValue={modal.data?.due_date?.slice(0,10)} /></div>
             <div><label className="label">Дата плащане</label><input className="input" type="date" name="paid_date" defaultValue={modal.data?.paid_date?.slice(0,10)} /></div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 pt-1 border-t border-gray-100">
+            <div className="col-span-2"><label className="label">Фактурна стойност на стоката</label><input className="input" type="number" step="0.01" name="invoice_value" defaultValue={modal.data?.invoice_value} placeholder="напр. 15000" /></div>
+            <div><label className="label">Валута</label>
+              <select className="select" name="invoice_value_currency" defaultValue={modal.data?.invoice_value_currency||'EUR'}>
+                {['EUR','USD','BGN','GBP','CNY'].map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex gap-3 pt-2 border-t">
             <button type="submit" className="btn-primary">{modal.data ? 'Запази' : 'Добави'}</button>

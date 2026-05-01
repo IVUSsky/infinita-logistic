@@ -45,16 +45,16 @@ exports.list = (req, res) => {
 }
 
 exports.create = (req, res) => {
-  const { type, shipment_id, amount, currency, amount_bgn, description, category, courier_id, invoice_number, due_date, status } = req.body
+  const { type, shipment_id, amount, currency, amount_bgn, description, category, courier_id, invoice_number, due_date, status, invoice_value, invoice_value_currency } = req.body
   if (!type || !amount || !description) return res.status(400).json({ error: 'Типът, сумата и описанието са задължителни' })
   const id = nextId('financial_records')
   db.get('financial_records').push({
     id,
     type,
     shipment_id: shipment_id || null,
-    amount,
+    amount: parseFloat(amount),
     currency: currency || 'EUR',
-    amount_bgn: amount_bgn || null,
+    amount_bgn: amount_bgn ? parseFloat(amount_bgn) : null,
     description,
     category: category || null,
     courier_id: courier_id || null,
@@ -62,6 +62,8 @@ exports.create = (req, res) => {
     due_date: due_date || null,
     paid_date: null,
     status: status || 'pending',
+    invoice_value: invoice_value ? parseFloat(invoice_value) : null,
+    invoice_value_currency: invoice_value_currency || 'EUR',
     created_by: req.user.id,
     created_at: now()
   }).write()
@@ -70,20 +72,22 @@ exports.create = (req, res) => {
 
 exports.update = (req, res) => {
   const id = parseInt(req.params.id)
-  const { type, amount, currency, amount_bgn, description, category, invoice_number, due_date, paid_date, status } = req.body
+  const { type, amount, currency, amount_bgn, description, category, invoice_number, due_date, paid_date, status, invoice_value, invoice_value_currency } = req.body
   const record = db.get('financial_records').find({ id }).value()
   if (!record) return res.status(404).json({ error: 'Записът не е намерен' })
   db.get('financial_records').find({ id }).assign({
     type,
-    amount,
+    amount: parseFloat(amount),
     currency: currency || 'EUR',
-    amount_bgn: amount_bgn || null,
+    amount_bgn: amount_bgn ? parseFloat(amount_bgn) : null,
     description,
     category: category || null,
     invoice_number: invoice_number || null,
     due_date: due_date || null,
     paid_date: paid_date || null,
-    status
+    status,
+    invoice_value: invoice_value ? parseFloat(invoice_value) : null,
+    invoice_value_currency: invoice_value_currency || 'EUR'
   }).write()
   res.json({ message: 'Записът е обновен' })
 }
@@ -151,14 +155,23 @@ exports.dashboard = (req, res) => {
     if (r.type === 'invoice' && r.status === 'overdue') { summary.total_overdue += r.amount || 0; summary.overdue_count++ }
   })
 
-  // Recent shipment costs
+  // Recent shipment costs with invoice value metrics
   const shipments = db.get('shipments').value()
+  const packingLists = db.get('packing_lists').value()
+
   const recentShipmentCosts = shipments
     .filter(s => s.freight_cost != null)
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
     .slice(0, 8)
     .map(s => {
       const c = couriers.find(c => c.id === s.courier_id)
+      // Find related financial record with invoice_value
+      const finRec = allRecords.find(r => r.shipment_id === s.id && r.invoice_value)
+      // Find packing list totals for cost/kg
+      const pl = packingLists.find(p => p.shipment_id === s.id)
+      const transport_cost = s.freight_cost || 0
+      const invoice_value = finRec ? finRec.invoice_value : null
+      const gw_kg = pl ? pl.total_gw_kg : null
       return {
         tracking_number: s.tracking_number,
         dest_country: s.dest_country,
@@ -167,7 +180,15 @@ exports.dashboard = (req, res) => {
         freight_cost: s.freight_cost,
         total_cost: s.total_cost,
         currency: s.currency,
-        created_at: s.created_at
+        created_at: s.created_at,
+        invoice_value,
+        invoice_value_currency: finRec ? finRec.invoice_value_currency : null,
+        transport_pct_of_invoice: (invoice_value && invoice_value > 0)
+          ? parseFloat(((transport_cost / invoice_value) * 100).toFixed(2))
+          : null,
+        cost_per_kg: (gw_kg && gw_kg > 0)
+          ? parseFloat((transport_cost / gw_kg).toFixed(3))
+          : null
       }
     })
 

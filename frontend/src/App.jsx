@@ -9,6 +9,7 @@ import HsCodesPage from './pages/HsCodes'
 import FinancialPage from './pages/Financial'
 import TrackingPage from './pages/Tracking'
 import AnalyticsPage from './pages/Analytics'
+import ContentsPage from './pages/Contents'
 import LoadingSpinner from './components/common/LoadingSpinner'
 
 function PrivateRoute({ children }) {
@@ -39,6 +40,7 @@ function AppRoutes() {
         <Route path="financial"  element={<ManagerRoute><FinancialPage /></ManagerRoute>} />
         <Route path="tracking"   element={<TrackingPage />} />
         <Route path="analytics"  element={<ManagerRoute><AnalyticsPage /></ManagerRoute>} />
+        <Route path="contents"   element={<ContentsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
