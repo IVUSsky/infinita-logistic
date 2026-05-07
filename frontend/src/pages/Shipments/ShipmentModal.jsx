@@ -54,6 +54,7 @@ const EMPTY = {
   weight_kg: '', packages_count: 1, length_cm: '', width_cm: '', height_cm: '',
   items: [{ ...EMPTY_ITEM }],
   description: '',
+  invoice_value: '', invoice_value_currency: 'EUR',
   declared_value: '', declared_value_currency: 'EUR',
   freight_cost: '', freight_cost_currency: 'EUR',
   insurance_cost: '', insurance_cost_currency: 'EUR',
@@ -566,12 +567,21 @@ export default function ShipmentModal({ open, data, onClose, onSave }) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="label">Фактурна стойност</label>
+                <label className="label">Обща фактурна стойност</label>
+                <div className="flex gap-1.5">
+                  <input className="input flex-1" type="number" min="0" step="0.01" value={form.invoice_value} onChange={f('invoice_value')} placeholder="Стойност по фактура" />
+                  <CurrencySelect field="invoice_value_currency" />
+                </div>
+              </div>
+              <div>
+                <label className="label">Митническа стойност</label>
                 <div className="flex gap-1.5">
                   <input className="input flex-1" type="number" min="0" step="0.01" value={form.declared_value} onChange={f('declared_value')} />
                   <CurrencySelect field="declared_value_currency" />
                 </div>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">Фактура №</label>
                 <input className="input" value={form.invoice_number} onChange={f('invoice_number')} />

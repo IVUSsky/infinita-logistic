@@ -10,6 +10,7 @@ import FinancialPage from './pages/Financial'
 import TrackingPage from './pages/Tracking'
 import AnalyticsPage from './pages/Analytics'
 import ContentsPage from './pages/Contents'
+import DocumentsPage from './pages/Documents'
 import LoadingSpinner from './components/common/LoadingSpinner'
 
 function PrivateRoute({ children }) {
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="tracking"   element={<TrackingPage />} />
         <Route path="analytics"  element={<ManagerRoute><AnalyticsPage /></ManagerRoute>} />
         <Route path="contents"   element={<ContentsPage />} />
+        <Route path="documents"  element={<DocumentsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

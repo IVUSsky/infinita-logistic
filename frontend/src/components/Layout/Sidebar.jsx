@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Package, Truck, FileCode, BarChart3, MapPin, X, LineChart, Boxes } from 'lucide-react'
+import { LayoutDashboard, Package, Truck, FileCode, BarChart3, MapPin, X, LineChart, Boxes, FileText } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
 const NAV = [
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/analytics',  icon: LineChart,  label: 'Аналитика',  managerOnly: true },
   { to: '/tracking',   icon: MapPin,     label: 'Tracking' },
   { to: '/contents',   icon: Boxes,      label: 'Съдържание' },
+  { to: '/documents',  icon: FileText,   label: 'Документи' },
 ]
 
 export default function Sidebar({ open, onClose }) {
